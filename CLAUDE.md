@@ -24,7 +24,9 @@ Key MLB Stats API endpoints:
 - `GET /api/v1/teams?sportId=1` — team list (for favoriting)
 - `GET /api/v1.1/game/{gamePk}/feed/live` — **live feed**: linescore, `liveData.plays.allPlays[]`
   with per-pitch `playEvents[]`, runners, and fielder attribution
-- `GET /api/v1/game/{gamePk}/content` — media + highlights (playable mp4 URLs on `cuts.diamond.mlb.com`)
+- `GET /api/v1/game/{gamePk}/content` — media + highlights. Playable mp4s come from
+  `mlb-cuts-diamond.mlb.com`, `darkroom-clips.mlb.com`, and `bdata-producedclips.mlb.com`
+  (verified against real responses; `cuts.diamond.mlb.com` appears in none)
 - `GET /api/v1/game/{gamePk}/boxscore` / `/linescore` — fielding positions and line score
 
 > Caveat: the MLB Stats API is reverse-engineered and undocumented — no stability guarantee,
@@ -108,3 +110,12 @@ npm run tauri build    # production Windows installer
   in one place. Do not `fetch` from the frontend.
 - Live views poll the live-feed command on a ~15s interval while a game is in progress.
 - Any external HTTP/URL change should be confined to `src-tauri/src/mlb/`.
+- **Never compute "today" from the machine clock.** A baseball day is a US concept. On a
+  machine ahead of US time (e.g. UTC+8), local midnight lands mid-way through the US
+  evening slate, so a locally-derived date asks for tomorrow's games and returns an empty
+  Preview list. `get_schedule` with no date sends **no `date` parameter at all**, letting
+  MLB apply its own game-day boundary; where a date string is unavoidable, use US Eastern
+  (`commands::today_mlb`).
+- Highlight mp4 hosts must stay in sync in **two** places: the CSP `media-src` in
+  `tauri.conf.json` and `ALLOWED_HOSTS` in `commands/media.rs`. A host missing from either
+  is a clip that silently fails. `tests/fixtures.rs` guards this.

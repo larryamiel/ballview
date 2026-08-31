@@ -7,10 +7,10 @@ verifiable milestone so the app can be tested continuously rather than built all
 
 | Decision | Default chosen | Notes |
 | --- | --- | --- |
-| Frontend framework | React 18 + TypeScript + Vite | Swap for Svelte/Vue with minimal cost if preferred |
+| Frontend framework | React 19 + TypeScript + Vite | Scaffold ships React 19; plan originally said 18 |
 | HTTP location | Rust commands via `reqwest` | Avoids CORS; centralizes all MLB endpoints |
 | Primary data source | MLB Stats API (keyless) | Free, official; undocumented + unstable — isolated in `src-tauri/src/mlb/` |
-| Highlight clips | MLB `game/{pk}/content` first | Highlightly (paid) is the fallback/upgrade path |
+| Highlight clips | MLB `game/{pk}/content` | Highlightly is out of scope for v1 (row below) |
 | Polling cadence | 15s during live games | Move to WebSocket/SSE only if MLB ever exposes one |
 | Favorites | Single favorite team (extensible to N) | Stored in `config.json` |
 | Video storage | Optional download; default URL-only | "Attach highlight" toggles downloading the mp4 |
@@ -40,8 +40,9 @@ verifiable milestone so the app can be tested continuously rather than built all
       `dialog:allow-open`, and the narrowest `fs` scope that covers `$APPDATA/ballview/**`
       plus the user-chosen export path. Register the plugins in `lib.rs` at the same time.
 - [ ] **CSP for remote media.** Set `app.security.csp` in `tauri.conf.json` to allow
-      `media-src https://cuts.diamond.mlb.com` (and `connect-src` for the same host if
-      ranged requests are needed). Without this Phase 5's `<video>` silently plays nothing.
+      `media-src` for MLB media hosts (the spike found these are `mlb-cuts-diamond.mlb.com`,
+      `darkroom-clips.mlb.com`, `bdata-producedclips.mlb.com` - NOT the documented
+      `cuts.diamond.mlb.com`). Without this Phase 5's `<video>` silently plays nothing.
 
 **Done when:** app launches, displays a placeholder screen, and a throwaway button
 successfully opens a native save dialog and writes a file under `%APPDATA%/ballview/` —
@@ -194,3 +195,40 @@ behind a `statcast_enabled` config flag and degrades to the Phase 4 views when i
 
 All 7 features work on a Windows 11 machine, favorites/history/saved games persist across
 restarts with no database, and a production installer is produced.
+
+---
+
+## Status — 2026-09-01
+
+Phases 0 through 7 are implemented. 24 Rust tests pass (`cargo test`).
+
+**Done and verified against real data**
+
+- Phase 0 — scaffold merged onto the docs, app id `com.ballview.app`, 1200×800 window.
+  Tauri 2 capabilities and the CSP were written up front, as planned.
+- Phase 1 — `mlb/` holds every external call. The validation spike ran against live
+  2026 data and a completed game (74 plays, 291 pitches, 89 fielding credits, 40 clips).
+  Real responses are captured in `src-tauri/tests/fixtures/` and asserted offline.
+- Phase 2 — file storage with atomic write-then-rename. Season keyed by the API field;
+  entries upsert by `gamePk` and preserve the `saved` flag.
+- Phases 3–6 — all seven features have working UI.
+- Phase 7 — export/import via the native dialog, error/empty/loading states throughout,
+  backoff on 429/5xx, README written.
+
+**Two bugs the spike caught** (each would have shipped broken; see README for detail)
+
+1. `today_local()` derived the game day from the machine clock. On this UTC+8 box that
+   asks for tomorrow's slate and renders an empty list. Now MLB decides the boundary.
+2. The documented highlight host `cuts.diamond.mlb.com` serves none of the real clips.
+   Both the CSP and the download allowlist would have blocked every mp4.
+
+**Not done**
+
+- [ ] **Statcast is backend-only.** `savant.rs` and `get_statcast` exist and are tested,
+      but nothing in `PitchView.tsx` consumes them yet. Phase 4b was always the
+      cut-first phase and no listed feature depends on it.
+- [ ] **App icons are the Tauri defaults.** Functional, but not ballview's own artwork.
+- [ ] **No runtime verification.** The code compiles, tests pass, and the installer
+      builds — but nobody has clicked through a running window yet. The Phase 0 ACL
+      smoke test (open a save dialog, write to app-data) still needs a human.
+- [ ] **Clean-machine smoke test** of the installer.
