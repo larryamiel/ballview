@@ -25,10 +25,20 @@ impl AppState {
     }
 }
 
-/// Today's date in the local timezone, as `YYYY-MM-DD`.
+/// Today's date on MLB's calendar, as `YYYY-MM-DD`.
 ///
-/// Local, not UTC: a 7pm Pacific first pitch is already "tomorrow" in UTC, which would
-/// make the game list empty for exactly the people most likely to be watching.
-pub fn today_local() -> String {
-    chrono::Local::now().format("%Y-%m-%d").to_string()
+/// **Not** the machine's local date. A baseball "day" is a US concept: the slate for
+/// Aug 31 is the one MLB lists under Aug 31, regardless of where the viewer sits. On a
+/// machine at UTC+8, local midnight arrives while the US evening games are still being
+/// played, so a local date would show the *next* day's schedule — an empty Preview list —
+/// for most of the viewer's waking hours.
+///
+/// US Eastern is the anchor because that is what MLB itself uses to bucket a game day.
+/// A late West Coast game running past midnight ET keeps the earlier `officialDate` in
+/// the API, so it stays on the day it belongs to.
+pub fn today_mlb() -> String {
+    chrono::Utc::now()
+        .with_timezone(&chrono_tz::America::New_York)
+        .format("%Y-%m-%d")
+        .to_string()
 }

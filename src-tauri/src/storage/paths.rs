@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn strips_traversal_sequences() {
-        assert_eq!(sanitize("../../etc/passwd"), "_________etc_passwd");
+        assert_eq!(sanitize("../../etc/passwd"), "______etc_passwd");
         assert_eq!(sanitize("..\\windows"), "___windows");
     }
 

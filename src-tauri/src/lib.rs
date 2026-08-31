@@ -1,9 +1,9 @@
 //! ballview — MLB play-by-play viewer.
 
-mod commands;
-mod error;
-mod mlb;
-mod storage;
+pub mod commands;
+pub mod error;
+pub mod mlb;
+pub mod storage;
 
 use commands::AppState;
 

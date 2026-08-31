@@ -50,7 +50,8 @@ impl From<tauri::Error> for Error {
 
 /// Serialize as the human-readable message so `invoke()` rejects with a useful string.
 impl Serialize for Error {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    // Fully qualified: the `Result<T>` alias below shadows the two-parameter std Result.
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.to_string())
     }
 }

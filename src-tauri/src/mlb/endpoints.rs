@@ -59,3 +59,18 @@ pub fn linescore(game_pk: i64) -> String {
 pub fn savant_game(game_pk: i64) -> String {
     format!("{SAVANT}/gf?game_pk={game_pk}")
 }
+
+/// Today's schedule with **no `date` parameter**, letting MLB decide which day that is.
+///
+/// This is the most authoritative answer to "what is on right now": the server applies
+/// its own game-day boundary, so no client-side timezone reasoning can get it wrong.
+pub fn schedule_today(team_id: Option<u32>) -> String {
+    let mut url = format!(
+        "{STATS_API}/schedule?sportId={SPORT_ID_MLB}\
+         &hydrate=team,linescore,game(content(summary))"
+    );
+    if let Some(id) = team_id {
+        url.push_str(&format!("&teamId={id}"));
+    }
+    url
+}

@@ -118,11 +118,20 @@ pub fn delete_local_clip(app: AppHandle, game_pk: i64, clip_id: String) -> Resul
 }
 
 /// Hosts MLB serves highlight mp4s from.
+///
+/// Taken from a real content feed, not from documentation: the Phase 1 spike found that
+/// `cuts.diamond.mlb.com` (which CLAUDE.md cited) appears in zero playback URLs, while
+/// three other hosts carry all of them. Keep this list and the `media-src` directive in
+/// `tauri.conf.json` in sync — a host missing from either one means a clip that silently
+/// will not play or will not download. `tests/fixtures.rs` asserts the fixture's hosts
+/// are all covered here.
 fn is_allowed_media_url(url: &str) -> bool {
     const ALLOWED_HOSTS: &[&str] = &[
+        "mlb-cuts-diamond.mlb.com",
+        "darkroom-clips.mlb.com",
+        "bdata-producedclips.mlb.com",
+        // Retained: MLB has served clips from this host historically and may again.
         "cuts.diamond.mlb.com",
-        "mlb-cuts-diamond.media.mlb.com",
-        "sporty-clips.mlb.com",
     ];
 
     let Some(rest) = url.strip_prefix("https://") else {
@@ -141,19 +150,20 @@ mod tests {
 
     #[test]
     fn accepts_mlb_media_hosts() {
-        assert!(is_allowed_media_url("https://cuts.diamond.mlb.com/a/b.mp4"));
+        assert!(is_allowed_media_url("https://mlb-cuts-diamond.mlb.com/a/b.mp4"));
+        assert!(is_allowed_media_url("https://darkroom-clips.mlb.com/a/b.mp4"));
         assert!(is_allowed_media_url(
-            "https://mlb-cuts-diamond.media.mlb.com/x.mp4"
+            "https://bdata-producedclips.mlb.com/x.mp4"
         ));
     }
 
     #[test]
     fn rejects_lookalike_and_insecure_hosts() {
         assert!(!is_allowed_media_url(
-            "https://cuts.diamond.mlb.com.attacker.tld/x.mp4"
+            "https://mlb-cuts-diamond.mlb.com.attacker.tld/x.mp4"
         ));
         assert!(!is_allowed_media_url("https://attacker.tld/x.mp4"));
-        assert!(!is_allowed_media_url("http://cuts.diamond.mlb.com/x.mp4"));
+        assert!(!is_allowed_media_url("http://mlb-cuts-diamond.mlb.com/x.mp4"));
         assert!(!is_allowed_media_url("file:///C:/windows/system32/x"));
     }
 }

@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: https://www.mlbstatic.com https://midfield.mlbstatic.com https://img.mlbstatic.com; media-src 'self' asset: http://asset.localhost blob: https://cuts.diamond.mlb.com https://mlb-cuts-diamond.media.mlb.com; connect-src 'self' ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: https://www.mlbstatic.com https://midfield.mlbstatic.com https://img.mlbstatic.com; media-src 'self' asset: http://asset.localhost blob: https://mlb-cuts-diamond.mlb.com https://darkroom-clips.mlb.com https://bdata-producedclips.mlb.com https://cuts.diamond.mlb.com; connect-src 'self' ipc: http://ipc.localhost"
     }
   },
   "bundle": {

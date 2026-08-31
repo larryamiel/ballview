@@ -1,51 +1,74 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+/** App shell: sidebar plus the main panel. */
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+import { useQuery } from '@tanstack/react-query';
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+import { GameList } from './components/GameList';
+import { GameView } from './components/GameView';
+import { HistoryLog } from './components/HistoryLog';
+import { SavedGames } from './components/SavedGames';
+import { TeamFavorites } from './components/TeamFavorites';
+import * as api from './lib/api';
+import { useAppStore } from './store/useAppStore';
+
+export default function App() {
+  const view = useAppStore((s) => s.view);
+  const setView = useAppStore((s) => s.setView);
+  const selectedGamePk = useAppStore((s) => s.selectedGamePk);
+  const viewingSnapshot = useAppStore((s) => s.viewingSnapshot);
+
+  const config = useQuery({ queryKey: ['config'], queryFn: api.getConfig });
+  const favoriteTeamId = config.data?.favoriteTeamIds?.[0] ?? null;
+  const pollMs = (config.data?.pollSeconds ?? 15) * 1000;
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <div className="app">
+      <aside className="sidebar">
+        <h1 className="brand">ballview</h1>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+        <nav className="nav">
+          {(
+            [
+              ['games', 'Games'],
+              ['history', 'Game log'],
+              ['saved', 'Saved'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={view === id ? 'nav-item active' : 'nav-item'}
+              onClick={() => setView(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+        <div className="sidebar-section">
+          <TeamFavorites favoriteTeamId={favoriteTeamId} />
+        </div>
+
+        <footer className="sidebar-foot muted small">
+          Data from the MLB Stats API. Unofficial and unaffiliated.
+        </footer>
+      </aside>
+
+      <main className="main">
+        {selectedGamePk != null ? (
+          <GameView
+            gamePk={selectedGamePk}
+            fromSnapshot={viewingSnapshot}
+            pollMs={pollMs}
+          />
+        ) : (
+          <>
+            {view === 'games' && (
+              <GameList favoriteTeamId={favoriteTeamId} pollMs={pollMs} />
+            )}
+            {view === 'history' && <HistoryLog favoriteTeamId={favoriteTeamId} />}
+            {view === 'saved' && <SavedGames />}
+          </>
+        )}
+      </main>
+    </div>
   );
 }
-
-export default App;

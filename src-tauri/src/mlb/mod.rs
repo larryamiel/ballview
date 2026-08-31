@@ -74,7 +74,7 @@ pub async fn fetch_highlights(client: &MlbClient, game_pk: i64) -> Result<Vec<Hi
 /// Clips appear under `highlights.highlights.items`, `highlights.live.items`, and the
 /// `media.epgAlternate[].items` sections, with heavy overlap between them. Which one is
 /// populated varies by game state, so all are read and the union is returned.
-fn flatten_highlights(content: GameContent) -> Vec<Highlight> {
+pub fn flatten_highlights(content: GameContent) -> Vec<Highlight> {
     let mut items: Vec<ContentItem> = Vec::new();
 
     if let Some(h) = content.highlights {
@@ -251,4 +251,15 @@ mod tests {
         let feed: LiveFeed = serde_json::from_str(json).unwrap();
         assert_eq!(feed.game_pk, Some(1));
     }
+}
+
+/// Today's games as MLB defines "today" (see `endpoints::schedule_today`).
+pub async fn fetch_schedule_today(
+    client: &MlbClient,
+    team_id: Option<u32>,
+) -> Result<Vec<GameSummary>> {
+    let resp: ScheduleResponse = client
+        .get_json(&endpoints::schedule_today(team_id))
+        .await?;
+    Ok(flatten_dates(resp))
 }

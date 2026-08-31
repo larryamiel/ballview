@@ -2,7 +2,7 @@
 
 use tauri::{AppHandle, State};
 
-use super::{today_local, AppState};
+use super::{today_mlb, AppState};
 use crate::error::Result;
 use crate::mlb;
 use crate::storage::{config, history::{self, HistoryLog}};
@@ -66,7 +66,10 @@ pub async fn refresh_history(
         None => return Ok(0),
     };
 
-    let today = chrono::Local::now().date_naive();
+    // MLB's calendar day, not the machine's - see `today_mlb`.
+    let today = chrono::Utc::now()
+        .with_timezone(&chrono_tz::America::New_York)
+        .date_naive();
     let earliest = today - chrono::Duration::days(MAX_BACKFILL_DAYS);
 
     // Start the day after the last game already on file, so a completed game is not
@@ -83,7 +86,7 @@ pub async fn refresh_history(
     let games = mlb::fetch_schedule_range(
         &state.client,
         &start.format("%Y-%m-%d").to_string(),
-        &today_local(),
+        &today_mlb(),
         Some(team_id),
     )
     .await?;
@@ -98,5 +101,8 @@ pub async fn refresh_history(
 /// This is not a shortcut around the season-key rule — per-game filing still reads the
 /// API's `season` field (see `storage::history::season_of`).
 fn current_season() -> String {
-    chrono::Local::now().format("%Y").to_string()
+    chrono::Utc::now()
+        .with_timezone(&chrono_tz::America::New_York)
+        .format("%Y")
+        .to_string()
 }
