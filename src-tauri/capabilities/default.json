@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities granted to the main ballview window. The frontend never touches the filesystem directly: it uses the dialog plugin to let the user choose a path, then hands that path to a Rust command. Filesystem scope is therefore limited to reading ballview's own app-data directory.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "dialog:allow-save",
+    "dialog:allow-open",
+    "dialog:allow-message",
+    {
+      "identifier": "fs:allow-read-text-file",
+      "allow": [{ "path": "$APPDATA/ballview/**" }]
+    },
+    {
+      "identifier": "fs:allow-exists",
+      "allow": [{ "path": "$APPDATA/ballview/**" }]
+    }
+  ]
+}

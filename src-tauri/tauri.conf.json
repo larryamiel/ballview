@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ballview",
+  "version": "0.1.0",
+  "identifier": "com.ballview.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "ballview",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 940,
+        "minHeight": 600,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: https://www.mlbstatic.com https://midfield.mlbstatic.com https://img.mlbstatic.com; media-src 'self' asset: http://asset.localhost blob: https://cuts.diamond.mlb.com https://mlb-cuts-diamond.media.mlb.com; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "Larry Amiel",
+    "shortDescription": "MLB play-by-play viewer",
+    "longDescription": "Watch Major League Baseball play-by-play in real time, favorite a team, and keep an on-disk history of its games."
+  }
+}
