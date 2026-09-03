@@ -112,6 +112,11 @@ pub struct SavedGameInfo {
     pub game_date: Option<String>,
     pub away_team: Option<String>,
     pub home_team: Option<String>,
+    /// Team ids, so the list can show club logos. Read back out of the stored feed
+    /// rather than persisted separately, which keeps snapshots written by earlier
+    /// versions working without a migration.
+    pub away_team_id: Option<i64>,
+    pub home_team_id: Option<i64>,
     pub away_score: Option<i64>,
     pub home_score: Option<i64>,
     pub is_final: bool,
@@ -120,6 +125,12 @@ pub struct SavedGameInfo {
 
 impl From<&GameSnapshot> for SavedGameInfo {
     fn from(s: &GameSnapshot) -> Self {
+        let teams = s
+            .feed
+            .game_data
+            .as_ref()
+            .and_then(|g| g.teams.as_ref());
+
         Self {
             game_pk: s.game_pk,
             saved_at: s.saved_at.clone(),
@@ -127,6 +138,8 @@ impl From<&GameSnapshot> for SavedGameInfo {
             game_date: s.game_date.clone(),
             away_team: s.away_team.clone(),
             home_team: s.home_team.clone(),
+            away_team_id: teams.and_then(|t| t.away.as_ref()).map(|t| t.id),
+            home_team_id: teams.and_then(|t| t.home.as_ref()).map(|t| t.id),
             away_score: s.away_score,
             home_score: s.home_score,
             is_final: s.is_final,

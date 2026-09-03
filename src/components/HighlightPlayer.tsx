@@ -6,11 +6,13 @@
  */
 
 import { useState } from 'react';
+import { Check, Download, Film, Play, X } from 'lucide-react';
 
 import { useHighlights } from '../hooks/useLiveFeed';
 import * as api from '../lib/api';
 import { errorMessage } from '../lib/api';
 import type { Highlight } from '../lib/types';
+import { EmptyState, ErrorState, Skeleton } from './ui/States';
 
 interface Props {
   gamePk: number;
@@ -43,21 +45,25 @@ export function HighlightPlayer({ gamePk, offlineHighlights, localClips = [] }: 
   };
 
   if (!offlineHighlights && query.isPending) {
-    return <p className="muted">Loading highlights…</p>;
+    return <Skeleton rows={3} height={96} />;
   }
 
   if (!offlineHighlights && query.error) {
     return (
-      <div className="error-box">
-        <p>Could not load highlights.</p>
-        <p className="muted small">{errorMessage(query.error)}</p>
-        <button onClick={() => query.refetch()}>Try again</button>
-      </div>
+      <ErrorState
+        title="Could not load highlights."
+        error={query.error}
+        onRetry={() => query.refetch()}
+      />
     );
   }
 
   if (!highlights || highlights.length === 0) {
-    return <p className="muted">No highlights published for this game yet.</p>;
+    return (
+      <EmptyState icon={<Film size={22} />} title="No highlights yet">
+        MLB publishes clips through the game and for a while after it ends.
+      </EmptyState>
+    );
   }
 
   return (
@@ -66,9 +72,11 @@ export function HighlightPlayer({ gamePk, offlineHighlights, localClips = [] }: 
         <div className="player">
           {/* `key` forces a remount so switching clips reloads the source. */}
           <video key={playing.url} src={playing.url} controls autoPlay className="video" />
-          <div className="row between">
+          <div className="row between player-bar">
             <strong>{playing.title}</strong>
-            <button onClick={() => setPlaying(null)}>Close</button>
+            <button className="btn ghost" onClick={() => setPlaying(null)}>
+              <X size={14} /> Close
+            </button>
           </div>
         </div>
       )}
@@ -78,31 +86,49 @@ export function HighlightPlayer({ gamePk, offlineHighlights, localClips = [] }: 
       <ul className="clip-list">
         {highlights.map((clip) => {
           const isSaved = saved.includes(clip.id);
+          const isPlaying = playing?.id === clip.id;
           return (
-            <li key={clip.id} className="clip">
-              {clip.thumbnail ? (
-                <img src={clip.thumbnail} alt="" className="thumb" loading="lazy" />
-              ) : (
-                <div className="thumb placeholder" />
-              )}
+            <li key={clip.id} className={`clip${isPlaying ? ' playing' : ''}`}>
+              <button
+                className="clip-thumb-btn"
+                onClick={() => clip.url && setPlaying(clip)}
+                disabled={!clip.url}
+                aria-label={`Play ${clip.title}`}
+              >
+                {clip.thumbnail ? (
+                  <img src={clip.thumbnail} alt="" className="thumb" loading="lazy" />
+                ) : (
+                  <div className="thumb placeholder" />
+                )}
+                {clip.url && (
+                  <span className="thumb-play" aria-hidden="true">
+                    <Play size={16} fill="currentColor" />
+                  </span>
+                )}
+                {clip.duration && <span className="thumb-duration">{clip.duration}</span>}
+              </button>
 
               <div className="clip-body">
                 <div className="clip-title">{clip.title}</div>
                 {clip.description && <p className="muted small">{clip.description}</p>}
-                <div className="row gap small muted">
-                  {clip.duration && <span>{clip.duration}</span>}
-                  {isSaved && <span className="badge saved">Saved</span>}
-                </div>
+                {isSaved && (
+                  <span className="badge saved">
+                    <Check size={11} aria-hidden="true" /> On disk
+                  </span>
+                )}
               </div>
 
               <div className="clip-actions">
                 {clip.url ? (
-                  <>
-                    <button onClick={() => setPlaying(clip)}>Play</button>
-                    <button onClick={() => save(clip)} disabled={saving === clip.id || isSaved}>
-                      {saving === clip.id ? 'Saving…' : isSaved ? 'Saved' : 'Save clip'}
-                    </button>
-                  </>
+                  <button
+                    className="btn"
+                    onClick={() => save(clip)}
+                    disabled={saving === clip.id || isSaved}
+                    title="Keep this clip alongside the saved game"
+                  >
+                    <Download size={14} />
+                    {saving === clip.id ? 'Saving…' : isSaved ? 'Saved' : 'Save clip'}
+                  </button>
                 ) : (
                   <span className="muted small">No clip available</span>
                 )}

@@ -192,6 +192,190 @@ pub struct LeagueRecord {
 }
 
 // ---------------------------------------------------------------------------
+// Standings  —  GET /api/v1/standings
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StandingsResponse {
+    #[serde(default)]
+    pub records: Vec<StandingsRecord>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StandingsRecord {
+    #[serde(default)]
+    pub division: Option<DivisionRef>,
+    #[serde(default)]
+    pub league: Option<IdName>,
+    #[serde(default)]
+    pub team_records: Vec<StandingsTeamRecord>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StandingsTeamRecord {
+    #[serde(default)]
+    pub team: Option<Team>,
+    #[serde(default)]
+    pub wins: Option<i64>,
+    #[serde(default)]
+    pub losses: Option<i64>,
+    /// A string in the API (".587"), not a number.
+    #[serde(default)]
+    pub winning_percentage: Option<String>,
+    /// Also a string: "-" for the division leader, otherwise "3.5".
+    #[serde(default)]
+    pub games_back: Option<String>,
+    #[serde(default)]
+    pub wild_card_games_back: Option<String>,
+    #[serde(default)]
+    pub division_rank: Option<String>,
+    #[serde(default)]
+    pub league_rank: Option<String>,
+    #[serde(default)]
+    pub streak: Option<Streak>,
+}
+
+/// A division as it appears in the standings response.
+///
+/// `nameShort` ("AL East") is what fits beside a club's record; the full name
+/// ("American League East") is the fallback for anything that omits it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DivisionRef {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub name_short: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Streak {
+    #[serde(default)]
+    pub streak_code: Option<String>,
+}
+
+/// One team's standing, flattened for the UI.
+///
+/// The API nests records under division, which the frontend has no use for — it looks
+/// records up by team id — so the nesting is collapsed here rather than in React.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamStanding {
+    pub team_id: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_name: Option<String>,
+    pub wins: i64,
+    pub losses: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pct: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub games_back: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub division_rank: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub division_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub league_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub streak: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Player stats  —  GET /api/v1/stats  and  GET /api/v1/people/{id}
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StatsResponse {
+    #[serde(default)]
+    pub stats: Vec<StatGroup>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatGroup {
+    #[serde(default)]
+    pub total_splits: Option<i64>,
+    #[serde(default)]
+    pub splits: Vec<StatSplit>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatSplit {
+    #[serde(default)]
+    pub player: Option<IdName>,
+    #[serde(default)]
+    pub team: Option<Team>,
+    #[serde(default)]
+    pub position: Option<Position>,
+    #[serde(default)]
+    pub rank: Option<i64>,
+    #[serde(default)]
+    pub stat: serde_json::Map<String, serde_json::Value>,
+}
+
+/// One row of the stats table, flattened for the UI.
+///
+/// `stat` stays an untyped map on purpose. MLB returns around sixty keys per split and
+/// a different set for hitting and pitching; modelling both as structs would mean two
+/// near-duplicate sixty-field types that the frontend would immediately widen back into
+/// a lookup. The column definitions in the UI are the single place that names them.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerStatRow {
+    pub player_id: i64,
+    pub player_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rank: Option<i64>,
+    pub stat: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PeopleResponse {
+    #[serde(default)]
+    pub people: Vec<Person>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Person {
+    pub id: i64,
+    #[serde(default)]
+    pub full_name: Option<String>,
+    #[serde(default)]
+    pub primary_number: Option<String>,
+    #[serde(default)]
+    pub primary_position: Option<Position>,
+    #[serde(default)]
+    pub bat_side: Option<CodeDesc>,
+    #[serde(default)]
+    pub pitch_hand: Option<CodeDesc>,
+    #[serde(default)]
+    pub height: Option<String>,
+    #[serde(default)]
+    pub weight: Option<i64>,
+    #[serde(default)]
+    pub current_age: Option<i64>,
+    #[serde(default)]
+    pub mlb_debut_date: Option<String>,
+    #[serde(default)]
+    pub birth_city: Option<String>,
+    #[serde(default)]
+    pub birth_country: Option<String>,
+    #[serde(default)]
+    pub current_team: Option<Team>,
+}
+
+// ---------------------------------------------------------------------------
 // Live feed  —  GET /api/v1.1/game/{pk}/feed/live
 // ---------------------------------------------------------------------------
 
@@ -513,10 +697,34 @@ pub struct PitchCoordinates {
     /// Height at the plate, in feet.
     #[serde(default, rename = "pZ")]
     pub p_z: Option<f64>,
+    /// Induced movement at the plate, in inches, relative to a spinless pitch.
     #[serde(default, rename = "pfxX")]
     pub pfx_x: Option<f64>,
     #[serde(default, rename = "pfxZ")]
     pub pfx_z: Option<f64>,
+
+    // The nine trajectory parameters. Position, velocity and acceleration at the
+    // measurement plane (y0, 50 ft from the plate) fully describe the flight under
+    // constant acceleration, which is what lets the UI draw the actual ball path
+    // instead of a guessed arc. Present on tracked pitches only.
+    #[serde(default, rename = "x0")]
+    pub x0: Option<f64>,
+    #[serde(default, rename = "y0")]
+    pub y0: Option<f64>,
+    #[serde(default, rename = "z0")]
+    pub z0: Option<f64>,
+    #[serde(default, rename = "vX0")]
+    pub v_x0: Option<f64>,
+    #[serde(default, rename = "vY0")]
+    pub v_y0: Option<f64>,
+    #[serde(default, rename = "vZ0")]
+    pub v_z0: Option<f64>,
+    #[serde(default, rename = "aX")]
+    pub a_x: Option<f64>,
+    #[serde(default, rename = "aY")]
+    pub a_y: Option<f64>,
+    #[serde(default, rename = "aZ")]
+    pub a_z: Option<f64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -711,6 +919,42 @@ pub struct BoxscoreTeam {
     pub bullpen: Vec<i64>,
     #[serde(default)]
     pub batting_order: Vec<i64>,
+    /// The team's totals line, for the bottom row of each table.
+    #[serde(default)]
+    pub team_stats: Option<PlayerStats>,
+    /// MLB's own footnotes — HR, RBI, SB, double plays, "Team LOB".
+    #[serde(default)]
+    pub info: Vec<BoxInfoSection>,
+    /// The lettered notes attached to substitutions ("a: struck out for X in the 7th").
+    #[serde(default)]
+    pub note: Vec<BoxNote>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoxInfoSection {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub field_list: Vec<BoxInfoField>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoxInfoField {
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoxNote {
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub value: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -724,6 +968,10 @@ pub struct BoxscorePlayer {
     pub position: Option<Position>,
     #[serde(default)]
     pub stats: Option<PlayerStats>,
+    /// The same shapes, season to date — where a batting average or an ERA comes from,
+    /// since neither means anything computed over one game.
+    #[serde(default)]
+    pub season_stats: Option<PlayerStats>,
     /// Every position played, in order — how substitutions show up.
     #[serde(default)]
     pub all_positions: Vec<Position>,
@@ -735,7 +983,94 @@ pub struct BoxscorePlayer {
 #[serde(rename_all = "camelCase")]
 pub struct PlayerStats {
     #[serde(default)]
+    pub batting: Option<BattingStats>,
+    #[serde(default)]
+    pub pitching: Option<PitchingStats>,
+    #[serde(default)]
     pub fielding: Option<FieldingStats>,
+}
+
+/// One batting line.
+///
+/// The same shape serves three purposes — a player's game, that player's season, and the
+/// team's totals — because MLB sends all three under the same keys. Rate stats are
+/// strings (".247"), and are only ever populated on the season and team lines: an average
+/// over four at-bats is noise, so the table shows the season one.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BattingStats {
+    /// MLB's own one-line summary, e.g. "0-4 | BB, 3 K, R".
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub at_bats: Option<i64>,
+    #[serde(default)]
+    pub runs: Option<i64>,
+    #[serde(default)]
+    pub hits: Option<i64>,
+    #[serde(default)]
+    pub doubles: Option<i64>,
+    #[serde(default)]
+    pub triples: Option<i64>,
+    #[serde(default)]
+    pub home_runs: Option<i64>,
+    #[serde(default)]
+    pub rbi: Option<i64>,
+    #[serde(default)]
+    pub base_on_balls: Option<i64>,
+    #[serde(default)]
+    pub strike_outs: Option<i64>,
+    #[serde(default)]
+    pub stolen_bases: Option<i64>,
+    #[serde(default)]
+    pub left_on_base: Option<i64>,
+    #[serde(default)]
+    pub avg: Option<String>,
+    #[serde(default)]
+    pub obp: Option<String>,
+    #[serde(default)]
+    pub slg: Option<String>,
+    #[serde(default)]
+    pub ops: Option<String>,
+}
+
+/// One pitching line, in the same three flavours as `BattingStats`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PitchingStats {
+    #[serde(default)]
+    pub summary: Option<String>,
+    /// A string, and deliberately so: "4.2" is four and two thirds, not four point two.
+    #[serde(default)]
+    pub innings_pitched: Option<String>,
+    #[serde(default)]
+    pub hits: Option<i64>,
+    #[serde(default)]
+    pub runs: Option<i64>,
+    #[serde(default)]
+    pub earned_runs: Option<i64>,
+    #[serde(default)]
+    pub base_on_balls: Option<i64>,
+    #[serde(default)]
+    pub strike_outs: Option<i64>,
+    #[serde(default)]
+    pub home_runs: Option<i64>,
+    #[serde(default)]
+    pub batters_faced: Option<i64>,
+    #[serde(default)]
+    pub pitches_thrown: Option<i64>,
+    #[serde(default)]
+    pub strikes: Option<i64>,
+    #[serde(default)]
+    pub games_started: Option<i64>,
+    #[serde(default)]
+    pub wins: Option<i64>,
+    #[serde(default)]
+    pub losses: Option<i64>,
+    #[serde(default)]
+    pub saves: Option<i64>,
+    #[serde(default)]
+    pub era: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
@@ -818,6 +1153,22 @@ pub struct ContentItem {
     pub playbacks: Vec<Playback>,
     #[serde(default)]
     pub image: Option<ContentImage>,
+    /// Who and what the clip is about. Every highlight carries `player_id` entries, which
+    /// is what lets a clip be attributed to a player exactly rather than by matching his
+    /// name against the title.
+    #[serde(default)]
+    pub keywords_all: Vec<ContentKeyword>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentKeyword {
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub value: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -869,4 +1220,165 @@ pub struct Highlight {
     pub url: Option<String>,
     #[serde(default)]
     pub thumbnail: Option<String>,
+    /// Player ids the clip is tagged with.
+    #[serde(default)]
+    pub player_ids: Vec<i64>,
+}
+
+// ---------------------------------------------------------------------------
+// Charts, comparisons and the spotlight
+// ---------------------------------------------------------------------------
+
+/// One game out of a player's game log.
+///
+/// The stat block is a free map for the same reason `PlayerStatRow` uses one: the keys
+/// differ by group and run to forty of them, and the chart builder addresses them by name
+/// anyway. What matters here is that every split is dated, which is what makes a time
+/// axis possible.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameLogSplit {
+    #[serde(default)]
+    pub date: Option<String>,
+    #[serde(default)]
+    pub game_pk: Option<i64>,
+    #[serde(default)]
+    pub is_home: Option<bool>,
+    #[serde(default)]
+    pub is_win: Option<bool>,
+    #[serde(default)]
+    pub opponent: Option<Team>,
+    #[serde(default)]
+    pub team: Option<Team>,
+    #[serde(default)]
+    pub stat: serde_json::Map<String, serde_json::Value>,
+}
+
+/// The raw shape of a game-log split, before the nested `game` object is flattened.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawLogSplit {
+    #[serde(default)]
+    pub date: Option<String>,
+    #[serde(default)]
+    pub game: Option<GameRef>,
+    #[serde(default)]
+    pub is_home: Option<bool>,
+    #[serde(default)]
+    pub is_win: Option<bool>,
+    #[serde(default)]
+    pub opponent: Option<Team>,
+    #[serde(default)]
+    pub team: Option<Team>,
+    #[serde(default)]
+    pub stat: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameRef {
+    #[serde(default)]
+    pub game_pk: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameLogResponse {
+    #[serde(default)]
+    pub stats: Vec<GameLogGroup>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameLogGroup {
+    #[serde(default)]
+    pub splits: Vec<RawLogSplit>,
+}
+
+/// A player as the comparison picker needs them: enough to find and label one.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerRef {
+    pub id: i64,
+    pub full_name: String,
+    #[serde(default)]
+    pub team_id: Option<i64>,
+    #[serde(default)]
+    pub team_name: Option<String>,
+    #[serde(default)]
+    pub position: Option<String>,
+    /// `Pitcher` for a pitcher — the picker uses it to offer the right stats.
+    #[serde(default)]
+    pub position_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeopleListResponse {
+    #[serde(default)]
+    pub people: Vec<PersonListEntry>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonListEntry {
+    pub id: i64,
+    #[serde(default)]
+    pub full_name: Option<String>,
+    #[serde(default)]
+    pub current_team: Option<Team>,
+    #[serde(default)]
+    pub primary_position: Option<Position>,
+    #[serde(default)]
+    pub active: Option<bool>,
+}
+
+/// One player's season sabermetrics — WAR and the rates built on linear weights.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SabermetricRow {
+    pub player_id: i64,
+    pub player_name: String,
+    #[serde(default)]
+    pub war: Option<f64>,
+    #[serde(default)]
+    pub woba: Option<f64>,
+    #[serde(default)]
+    pub wrc_plus: Option<f64>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SabermetricsResponse {
+    #[serde(default)]
+    pub stats: Vec<SabermetricsGroup>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SabermetricsGroup {
+    #[serde(default)]
+    pub splits: Vec<SabermetricsSplit>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SabermetricsSplit {
+    #[serde(default)]
+    pub player: Option<IdName>,
+    #[serde(default)]
+    pub stat: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Release speed for one pitch type on one date, already averaged.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PitchSpeedPoint {
+    pub date: String,
+    pub pitch_type: String,
+    pub pitches: u32,
+    pub avg_speed: f64,
+    pub max_speed: f64,
+    #[serde(default)]
+    pub avg_spin: Option<f64>,
 }

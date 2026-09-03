@@ -14,11 +14,21 @@ plain JSON files. **There is no database.**
 | # | Feature | Where |
 | --- | --- | --- |
 | 1 | Today's games with score and inning state | `GameList.tsx` |
-| 2 | Favorite a team | `TeamFavorites.tsx` |
+| 2 | Favorite a team, with logos and records | `TeamPicker.tsx` |
 | 3 | The favorited team's game log, with backfill | `HistoryLog.tsx` |
 | 4 | Every pitch: type, speed, location, count, result | `PitchView.tsx` |
-| 5 | Defensive alignment and who fielded each play | `FielderView.tsx` |
+| 4b | Animated ball path from the tracked trajectory | `BallPath.tsx` |
+| 5 | Box score: every batting and pitching line, both sides | `BoxScore.tsx` |
+| 10 | Team records, from the standings | `ScoreBoard.tsx`, `TeamPicker.tsx` |
 | 6 | Watch highlight clips inline | `HighlightPlayer.tsx` |
+| 6b | Live view: the pitch from behind the plate, then the field | `LiveView.tsx`, `UmpireView.tsx`, `PitchRail.tsx` |
+| 6c | Replay any pitch of any at-bat | `ReplayView.tsx` |
+| 8 | Player stats: season / date range / last N games, sortable | `PlayerStats.tsx` |
+| 9 | Game log as a calendar (My Team's default view) | `GameCalendar.tsx` |
+| 10 | Batted ball flown out to the fielder who handled it | `FieldDiagram.tsx` |
+| 11 | Savant video of any pitch, in a Clip tab | `PitchView.tsx`, `mlb/savant.rs` |
+| 12 | Player charts: a stat over time, or stat vs stat, several players at once | `PlayerCompare.tsx`, `charts/` |
+| 13 | Player of the day / week / month, with box lines and clips | `SpotlightPanel.tsx`, `commands/spotlight.rs` |
 | 7 | Attach a highlight to a saved game | `commands/media.rs` |
 
 Plus export and import of a game as a single portable `.json` file.

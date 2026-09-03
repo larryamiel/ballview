@@ -51,6 +51,101 @@ fn flatten_dates(resp: ScheduleResponse) -> Vec<GameSummary> {
     resp.dates.into_iter().flat_map(|d| d.games).collect()
 }
 
+/// Every team's record for a season, flattened out of MLB's per-division nesting.
+pub async fn fetch_standings(client: &MlbClient, season: &str) -> Result<Vec<TeamStanding>> {
+    let resp: StandingsResponse = client.get_json(&endpoints::standings(season)).await?;
+    Ok(flatten_standings(resp))
+}
+
+/// Collapse `records[].teamRecords[]` into one row per team.
+///
+/// Split out from the fetch so it can be tested against a saved fixture without a
+/// network call — the shape here is the part that drifts, not the request.
+pub fn flatten_standings(resp: StandingsResponse) -> Vec<TeamStanding> {
+    let mut out = Vec::with_capacity(30);
+    for record in resp.records {
+        let division_name = record
+            .division
+            .as_ref()
+            .and_then(|d| d.name_short.clone().or_else(|| d.name.clone()));
+        let league_name = record.league.as_ref().and_then(|l| l.name.clone());
+        for tr in record.team_records {
+            let Some(team) = tr.team else { continue };
+            out.push(TeamStanding {
+                team_id: team.id,
+                team_name: team.name.clone(),
+                wins: tr.wins.unwrap_or(0),
+                losses: tr.losses.unwrap_or(0),
+                pct: tr.winning_percentage,
+                games_back: tr.games_back,
+                division_rank: tr.division_rank,
+                division_name: division_name.clone(),
+                league_name: league_name.clone(),
+                streak: tr.streak.and_then(|s| s.streak_code),
+            });
+        }
+    }
+    out
+}
+
+/// League-wide player statistics, flattened to one row per player.
+#[allow(clippy::too_many_arguments)]
+pub async fn fetch_player_stats(
+    client: &MlbClient,
+    kind: &str,
+    group: &str,
+    season: &str,
+    pool: &str,
+    limit: u32,
+    sort_stat: Option<&str>,
+    order: Option<&str>,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+    games_back: Option<u32>,
+) -> Result<Vec<PlayerStatRow>> {
+    let url = endpoints::player_stats(
+        kind, group, season, pool, limit, sort_stat, order, start_date, end_date, games_back,
+    );
+    let resp: StatsResponse = client.get_json(&url).await?;
+    Ok(flatten_stats(resp))
+}
+
+/// Collapse `stats[].splits[]` into one row per player.
+///
+/// A split with no player attached is dropped rather than rendered as a blank row: it
+/// means MLB returned a team or league aggregate, which this table has no column for.
+pub fn flatten_stats(resp: StatsResponse) -> Vec<PlayerStatRow> {
+    let mut out = Vec::new();
+    for group in resp.stats {
+        for split in group.splits {
+            let Some(player) = split.player else { continue };
+            let Some(id) = player.id else { continue };
+            out.push(PlayerStatRow {
+                player_id: id,
+                player_name: player
+                    .full_name
+                    .or(player.name)
+                    .unwrap_or_else(|| format!("Player {id}")),
+                team_id: split.team.as_ref().map(|t| t.id),
+                team_name: split.team.and_then(|t| t.name),
+                position: split.position.and_then(|p| p.abbreviation),
+                rank: split.rank,
+                stat: split.stat,
+            });
+        }
+    }
+    out
+}
+
+/// One player's biographical record, for the preview card.
+pub async fn fetch_person(client: &MlbClient, person_id: i64) -> Result<Person> {
+    let resp: PeopleResponse = client.get_json(&endpoints::person(person_id)).await?;
+    resp.people
+        .into_iter()
+        .next()
+        .ok_or_else(|| crate::error::Error::Parse(format!("no player {person_id}")))
+}
+
 pub async fn fetch_live_feed(client: &MlbClient, game_pk: i64) -> Result<LiveFeed> {
     client.get_json(&endpoints::live_feed(game_pk)).await
 }
@@ -116,6 +211,7 @@ pub fn flatten_highlights(content: GameContent) -> Vec<Highlight> {
             date: item.date,
             url: best_playback(&item.playbacks),
             thumbnail: best_thumbnail(item.image.as_ref()),
+            player_ids: player_ids(&item.keywords_all),
         });
     }
     out
@@ -155,6 +251,21 @@ fn best_playback(playbacks: &[Playback]) -> Option<String> {
                 .unwrap_or(0)
         })
         .and_then(|p| p.url.clone())
+}
+
+/// The players a clip is tagged with.
+///
+/// Both `player` ("playerid-676979") and `player_id` ("676979") appear for the same
+/// person, so only the plain numeric form is read and the list is de-duplicated.
+fn player_ids(keywords: &[ContentKeyword]) -> Vec<i64> {
+    let mut out: Vec<i64> = keywords
+        .iter()
+        .filter(|k| k.kind.as_deref() == Some("player_id"))
+        .filter_map(|k| k.value.as_ref()?.parse::<i64>().ok())
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
 }
 
 fn best_thumbnail(image: Option<&ContentImage>) -> Option<String> {
@@ -262,4 +373,154 @@ pub async fn fetch_schedule_today(
         .get_json(&endpoints::schedule_today(team_id))
         .await?;
     Ok(flatten_dates(resp))
+}
+
+// ---------------------------------------------------------------------------
+// Charts, comparisons and the spotlight
+// ---------------------------------------------------------------------------
+
+/// One player's game-by-game line, oldest first.
+///
+/// The `game` object is flattened to its `gamePk` on the way out: the chart only ever
+/// wants the id, to open the box score behind a point.
+pub async fn fetch_game_log(
+    client: &MlbClient,
+    person_id: i64,
+    group: &str,
+    season: &str,
+) -> Result<Vec<GameLogSplit>> {
+    let resp: GameLogResponse = client
+        .get_json(&endpoints::player_game_log(person_id, group, season))
+        .await?;
+    Ok(flatten_game_log(resp))
+}
+
+pub fn flatten_game_log(resp: GameLogResponse) -> Vec<GameLogSplit> {
+    let mut out = Vec::new();
+    for group in resp.stats {
+        for split in group.splits {
+            out.push(GameLogSplit {
+                date: split.date,
+                game_pk: split.game.and_then(|g| g.game_pk),
+                is_home: split.is_home,
+                is_win: split.is_win,
+                opponent: split.opponent,
+                team: split.team,
+                stat: split.stat,
+            });
+        }
+    }
+    // MLB returns these chronologically, but a chart that assumes it and is wrong draws
+    // a line that doubles back on itself, so the order is made explicit here.
+    out.sort_by(|a, b| a.date.cmp(&b.date));
+    out
+}
+
+/// One player's totals over a window — the point behind a scatter mark.
+pub async fn fetch_player_range(
+    client: &MlbClient,
+    person_id: i64,
+    group: &str,
+    season: &str,
+    start: &str,
+    end: &str,
+) -> Result<Option<PlayerStatRow>> {
+    let resp: StatsResponse = client
+        .get_json(&endpoints::player_range(person_id, group, season, start, end))
+        .await?;
+    Ok(first_split_as_row(resp, person_id))
+}
+
+/// Turn a *per-player* stats response into one row.
+///
+/// `flatten_stats` cannot be used here: it drops any split with no `player` object, and
+/// the `/people/{id}/stats` endpoints omit that object entirely — the player is already
+/// named by the URL. Reusing it silently returned nothing for every player on the
+/// scatter, which is exactly the kind of empty chart that looks like a network problem.
+fn first_split_as_row(resp: StatsResponse, person_id: i64) -> Option<PlayerStatRow> {
+    let split = resp.stats.into_iter().flat_map(|g| g.splits).next()?;
+    Some(PlayerStatRow {
+        player_id: split.player.as_ref().and_then(|p| p.id).unwrap_or(person_id),
+        player_name: split
+            .player
+            .as_ref()
+            .and_then(|p| p.full_name.clone().or_else(|| p.name.clone()))
+            .unwrap_or_default(),
+        team_id: split.team.as_ref().map(|t| t.id),
+        team_name: split.team.and_then(|t| t.name),
+        position: split.position.and_then(|p| p.abbreviation),
+        rank: split.rank,
+        stat: split.stat,
+    })
+}
+
+/// Every player on a big-league roster this season, for the picker.
+pub async fn fetch_sport_players(client: &MlbClient, season: &str) -> Result<Vec<PlayerRef>> {
+    let resp: PeopleListResponse = client
+        .get_json(&endpoints::sport_players(season))
+        .await?;
+
+    let mut out: Vec<PlayerRef> = resp
+        .people
+        .into_iter()
+        .filter_map(|p| {
+            let name = p.full_name?;
+            Some(PlayerRef {
+                id: p.id,
+                full_name: name,
+                team_id: p.current_team.as_ref().map(|t| t.id),
+                team_name: p.current_team.and_then(|t| t.name),
+                position: p
+                    .primary_position
+                    .as_ref()
+                    .and_then(|pos| pos.abbreviation.clone()),
+                position_type: p.primary_position.and_then(|pos| pos.kind),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.full_name.cmp(&b.full_name));
+    out
+        .into_iter()
+        .fold(Ok(Vec::new()), |acc: Result<Vec<PlayerRef>>, p| {
+            let mut v = acc?;
+            // The roster feed lists a player once per team when they were traded; the
+            // picker wants one row per person.
+            if v.last().map(|l: &PlayerRef| l.id) != Some(p.id) {
+                v.push(p);
+            }
+            Ok(v)
+        })
+}
+
+/// Season WAR and friends, indexed by player id.
+pub async fn fetch_sabermetrics(
+    client: &MlbClient,
+    group: &str,
+    season: &str,
+) -> Result<Vec<SabermetricRow>> {
+    let resp: SabermetricsResponse = client
+        .get_json(&endpoints::sabermetrics(group, season, 2000))
+        .await?;
+    Ok(flatten_sabermetrics(resp))
+}
+
+pub fn flatten_sabermetrics(resp: SabermetricsResponse) -> Vec<SabermetricRow> {
+    let num = |m: &serde_json::Map<String, serde_json::Value>, k: &str| -> Option<f64> {
+        m.get(k).and_then(|v| v.as_f64())
+    };
+    let mut out = Vec::new();
+    for group in resp.stats {
+        for split in group.splits {
+            let Some(player) = split.player else { continue };
+            let Some(id) = player.id else { continue };
+            out.push(SabermetricRow {
+                player_id: id,
+                player_name: player.full_name.unwrap_or_else(|| format!("Player {id}")),
+                war: num(&split.stat, "war"),
+                woba: num(&split.stat, "woba"),
+                wrc_plus: num(&split.stat, "wRcPlus"),
+            });
+        }
+    }
+    out
 }

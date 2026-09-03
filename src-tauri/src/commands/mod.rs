@@ -3,12 +3,15 @@
 //! Commands are thin: they resolve state, delegate to `mlb` or `storage`, and return.
 //! Any logic worth testing lives in those modules, which need no Tauri runtime.
 
+pub mod charts;
 pub mod favorites;
 pub mod games;
 pub mod history;
 pub mod live;
 pub mod media;
 pub mod schedule;
+pub mod spotlight;
+pub mod stats;
 
 use crate::mlb::client::MlbClient;
 
@@ -41,4 +44,17 @@ pub fn today_mlb() -> String {
         .with_timezone(&chrono_tz::America::New_York)
         .format("%Y-%m-%d")
         .to_string()
+}
+
+/// The season to ask for, defaulting to the one now in progress.
+///
+/// Derived from US Eastern like every other date in the app: on a machine east of UTC a
+/// local new year arrives while the previous season's playoffs are still being played.
+pub fn season_or_current(season: Option<String>) -> String {
+    season.unwrap_or_else(|| {
+        chrono::Utc::now()
+            .with_timezone(&chrono_tz::America::New_York)
+            .format("%Y")
+            .to_string()
+    })
 }

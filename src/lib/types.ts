@@ -91,10 +91,27 @@ export interface Count {
 }
 
 export interface PitchCoordinates {
+  /** Horizontal location at the plate, in feet from centre. */
   pX?: number | null;
+  /** Height at the plate, in feet. */
   pZ?: number | null;
+  /** Induced movement at the plate, in inches. */
   pfxX?: number | null;
   pfxZ?: number | null;
+
+  /**
+   * The nine trajectory parameters: position, velocity and acceleration at the 50-foot
+   * measurement plane. Present on tracked pitches only — see `BallPath`.
+   */
+  x0?: number | null;
+  y0?: number | null;
+  z0?: number | null;
+  vX0?: number | null;
+  vY0?: number | null;
+  vZ0?: number | null;
+  aX?: number | null;
+  aY?: number | null;
+  aZ?: number | null;
 }
 
 export interface PitchBreaks {
@@ -292,13 +309,76 @@ export interface FieldingStats {
   chances?: number | null;
 }
 
+/**
+ * One batting line.
+ *
+ * The same shape covers a player's game, that player's season, and the team's totals —
+ * MLB sends all three under the same keys. The rate stats are strings (".247") and are
+ * populated only on the season and team lines, which is why the table's AVG column reads
+ * from `seasonStats`: an average over four at-bats is noise.
+ */
+export interface BattingStats {
+  /** MLB's own summary, e.g. `"0-4 | BB, 3 K, R"`. */
+  summary?: string | null;
+  atBats?: number | null;
+  runs?: number | null;
+  hits?: number | null;
+  doubles?: number | null;
+  triples?: number | null;
+  homeRuns?: number | null;
+  rbi?: number | null;
+  baseOnBalls?: number | null;
+  strikeOuts?: number | null;
+  stolenBases?: number | null;
+  leftOnBase?: number | null;
+  avg?: string | null;
+  obp?: string | null;
+  slg?: string | null;
+  ops?: string | null;
+}
+
+export interface PitchingStats {
+  summary?: string | null;
+  /** A string on purpose: `"4.2"` is four and two thirds innings, not four point two. */
+  inningsPitched?: string | null;
+  hits?: number | null;
+  runs?: number | null;
+  earnedRuns?: number | null;
+  baseOnBalls?: number | null;
+  strikeOuts?: number | null;
+  homeRuns?: number | null;
+  battersFaced?: number | null;
+  pitchesThrown?: number | null;
+  strikes?: number | null;
+  gamesStarted?: number | null;
+  wins?: number | null;
+  losses?: number | null;
+  saves?: number | null;
+  era?: string | null;
+}
+
+export interface PlayerGameStats {
+  batting?: BattingStats | null;
+  pitching?: PitchingStats | null;
+  fielding?: FieldingStats | null;
+}
+
 export interface BoxscorePlayer {
   person?: IdName | null;
   jerseyNumber?: string | null;
   position?: Position | null;
-  stats?: { fielding?: FieldingStats | null } | null;
+  stats?: PlayerGameStats | null;
+  /** The same shapes, season to date — where AVG and ERA come from. */
+  seasonStats?: PlayerGameStats | null;
   allPositions?: Position[];
+  /** `"100"` for a starter in the first slot, `"101"` for whoever replaced them. */
   battingOrder?: string | null;
+}
+
+/** MLB's own footnotes under a box score: HR, RBI, SB, double plays, team LOB. */
+export interface BoxInfoSection {
+  title?: string | null;
+  fieldList?: { label?: string | null; value?: string | null }[];
 }
 
 export interface BoxscoreTeam {
@@ -310,6 +390,9 @@ export interface BoxscoreTeam {
   bench?: number[];
   bullpen?: number[];
   battingOrder?: number[];
+  teamStats?: PlayerGameStats | null;
+  info?: BoxInfoSection[];
+  note?: { label?: string | null; value?: string | null }[];
 }
 
 export interface Boxscore {
@@ -376,6 +459,66 @@ export interface StatcastGame {
   pitches: Record<string, StatcastPitch>;
 }
 
+/**
+ * One team's place in the standings, flattened by the Rust side.
+ *
+ * `pct` and `gamesBack` are strings in the API (".587", "-") and are kept that way so
+ * the UI shows exactly what MLB publishes.
+ */
+export interface TeamStanding {
+  teamId: number;
+  teamName?: string | null;
+  wins: number;
+  losses: number;
+  pct?: string | null;
+  gamesBack?: string | null;
+  divisionRank?: string | null;
+  divisionName?: string | null;
+  leagueName?: string | null;
+  streak?: string | null;
+}
+
+// --- Player stats ----------------------------------------------------------
+
+/**
+ * One row of a stats leaderboard.
+ *
+ * `stat` is an untyped bag because MLB returns ~60 keys per split and a different set
+ * for hitting and pitching. The column tables in `PlayerStats.tsx` are the one place
+ * that names them, and values arrive as strings (".302", "180.1") as often as numbers.
+ */
+export interface PlayerStatRow {
+  playerId: number;
+  playerName: string;
+  teamId?: number | null;
+  teamName?: string | null;
+  position?: string | null;
+  rank?: number | null;
+  stat: Record<string, string | number | null>;
+}
+
+/** Mirrors the Rust `StatRange` enum, which is tagged on `kind`. */
+export type StatRange =
+  | { kind: 'season' }
+  | { kind: 'dateRange'; start: string; end: string }
+  | { kind: 'lastGames'; games: number };
+
+export interface Person {
+  id: number;
+  fullName?: string | null;
+  primaryNumber?: string | null;
+  primaryPosition?: Position | null;
+  batSide?: CodeDesc | null;
+  pitchHand?: CodeDesc | null;
+  height?: string | null;
+  weight?: number | null;
+  currentAge?: number | null;
+  mlbDebutDate?: string | null;
+  birthCity?: string | null;
+  birthCountry?: string | null;
+  currentTeam?: Team | null;
+}
+
 // --- Storage ---------------------------------------------------------------
 
 export interface Config {
@@ -414,6 +557,8 @@ export interface SavedGameInfo {
   gameDate?: string | null;
   awayTeam?: string | null;
   homeTeam?: string | null;
+  awayTeamId?: number | null;
+  homeTeamId?: number | null;
   awayScore?: number | null;
   homeScore?: number | null;
   isFinal: boolean;
@@ -437,3 +582,62 @@ export interface GameSnapshot {
   highlights: Highlight[];
   localClips: string[];
 }
+
+// --- Charts, comparisons and the spotlight ---------------------------------
+
+/** One game from a player's game log. The stat block's keys vary by group. */
+export interface GameLogSplit {
+  date?: string | null;
+  gamePk?: number | null;
+  isHome?: boolean | null;
+  isWin?: boolean | null;
+  opponent?: Team | null;
+  team?: Team | null;
+  stat: Record<string, string | number | null>;
+}
+
+/** A player as the comparison picker needs them. */
+export interface PlayerRef {
+  id: number;
+  fullName: string;
+  teamId?: number | null;
+  teamName?: string | null;
+  position?: string | null;
+  /** `Pitcher` for a pitcher — decides which stats the picker offers. */
+  positionType?: string | null;
+}
+
+/** Release speed for one pitch type on one date, already averaged in Rust. */
+export interface PitchSpeedPoint {
+  date: string;
+  pitchType: string;
+  pitches: number;
+  avgSpeed: number;
+  maxSpeed: number;
+  avgSpin?: number | null;
+}
+
+/** One player's standing in a spotlight window. */
+export interface Performer {
+  playerId: number;
+  playerName: string;
+  teamId?: number | null;
+  teamName?: string | null;
+  position?: string | null;
+  /** The composite, 0–100 within the window's pool. */
+  score: number;
+  /** Wins added over the window, estimated from linear weights. */
+  winsEstimate: number;
+  /** MLB's season-to-date WAR, for context — it is not windowed. */
+  seasonWar?: number | null;
+  line: string;
+}
+
+export interface Spotlight {
+  start: string;
+  end: string;
+  hitters: Performer[];
+  pitchers: Performer[];
+}
+
+export type SpotlightPeriod = 'day' | 'week' | 'month';

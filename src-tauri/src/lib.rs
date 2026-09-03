@@ -32,6 +32,18 @@ pub fn run() {
             commands::schedule::get_schedule,
             commands::schedule::get_schedule_range,
             commands::schedule::get_today,
+            commands::schedule::get_standings,
+            // player stats
+            commands::stats::get_player_stats,
+            commands::stats::get_person,
+            // charts and comparisons
+            commands::charts::get_player_game_log,
+            commands::charts::get_player_range,
+            commands::charts::search_players,
+            commands::charts::get_pitch_speeds,
+            // spotlight
+            commands::spotlight::get_top_performers,
+            commands::spotlight::get_player_highlights,
             // live
             commands::live::get_live_feed,
             commands::live::get_boxscore,
@@ -55,6 +67,7 @@ pub fn run() {
             commands::games::import_game,
             // media
             commands::media::download_highlight,
+            commands::media::get_pitch_clip,
             commands::media::list_local_clips,
             commands::media::delete_local_clip,
         ])

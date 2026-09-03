@@ -66,3 +66,23 @@ export function useHighlights(gamePk: number | null) {
     staleTime: 60_000,
   });
 }
+
+/**
+ * Season standings, keyed by team id for O(1) lookup at the call sites.
+ *
+ * Records move at most once a day per team, so this is cached for an hour rather than
+ * refetched alongside the scoreboard.
+ */
+export function useStandings() {
+  return useQuery({
+    queryKey: ['standings'],
+    queryFn: async () => {
+      const rows = await api.getStandings();
+      return new Map(rows.map((r) => [r.teamId, r]));
+    },
+    staleTime: 60 * 60 * 1000,
+    // A missing record costs a line of text, not a broken screen, so a failure here
+    // must never surface as an error state in the UI.
+    retry: 1,
+  });
+}

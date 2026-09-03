@@ -85,6 +85,39 @@ pub async fn download_highlight(
     Ok(dest.to_string_lossy().to_string())
 }
 
+/// The Savant video of one pitch, by the live feed's `playId`.
+///
+/// `None` means Savant has no video for that pitch, which is an ordinary answer — an
+/// untracked pitch, or a game too old or too new to have been cut — not a failure. The
+/// mp4 URL is resolved here rather than in the webview because it has to be scraped out
+/// of an HTML page, and because the host it points at then has to be checked before
+/// anything is handed to a `<video>` tag.
+#[tauri::command]
+pub async fn get_pitch_clip(state: State<'_, AppState>, play_id: String) -> Result<Option<String>> {
+    // `play_id` is interpolated into a URL, so it is validated as the UUID the feed
+    // always sends rather than trusted. Anything else would let a caller point the
+    // request at another Savant path entirely.
+    if !is_play_id(&play_id) {
+        return Err(Error::other(format!("not a play id: {play_id}")));
+    }
+    crate::mlb::savant::fetch_pitch_clip(&state.client, &play_id).await
+}
+
+/// A 36-character `8-4-4-4-12` hex UUID, the only shape `playId` ever takes.
+fn is_play_id(id: &str) -> bool {
+    let groups = [8, 4, 4, 4, 12];
+    let mut parts = id.split('-');
+    for len in groups {
+        let Some(part) = parts.next() else {
+            return false;
+        };
+        if part.len() != len || !part.chars().all(|c| c.is_ascii_hexdigit()) {
+            return false;
+        }
+    }
+    parts.next().is_none()
+}
+
 /// Clip ids already downloaded for a game.
 #[tauri::command]
 pub fn list_local_clips(app: AppHandle, game_pk: i64) -> Result<Vec<String>> {
@@ -132,6 +165,8 @@ fn is_allowed_media_url(url: &str) -> bool {
         "bdata-producedclips.mlb.com",
         // Retained: MLB has served clips from this host historically and may again.
         "cuts.diamond.mlb.com",
+        // Savant's per-pitch clips, resolved by `get_pitch_clip`.
+        crate::mlb::savant::CLIP_HOST,
     ];
 
     let Some(rest) = url.strip_prefix("https://") else {
@@ -155,6 +190,25 @@ mod tests {
         assert!(is_allowed_media_url(
             "https://bdata-producedclips.mlb.com/x.mp4"
         ));
+    }
+
+    #[test]
+    fn accepts_the_savant_clip_host() {
+        assert!(is_allowed_media_url(
+            "https://sporty-clips.mlb.com/QXdhazNf.mp4"
+        ));
+    }
+
+    #[test]
+    fn play_ids_must_be_uuids() {
+        use super::is_play_id;
+        assert!(is_play_id("09540723-2bd4-361e-9c95-99f681faaa6b"));
+        // A traversal or a query tacked on would otherwise reshape the Savant URL.
+        assert!(!is_play_id("09540723-2bd4-361e-9c95-99f681faaa6b&x=1"));
+        assert!(!is_play_id("../../gf?game_pk=1"));
+        assert!(!is_play_id("09540723-2bd4-361e-9c95"));
+        assert!(!is_play_id("09540723-2bd4-361e-9c95-99f681faaa6z"));
+        assert!(!is_play_id(""));
     }
 
     #[test]

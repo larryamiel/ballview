@@ -12,16 +12,17 @@
   "app": {
     "windows": [
       {
-        "title": "ballview",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 940,
+        "title": "Ballview - Play By Play",
+        "width": 1280,
+        "height": 720,
+        "minWidth": 880,
         "minHeight": 600,
-        "resizable": true
+        "resizable": true,
+        "center": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: https://www.mlbstatic.com https://midfield.mlbstatic.com https://img.mlbstatic.com; media-src 'self' asset: http://asset.localhost blob: https://mlb-cuts-diamond.mlb.com https://darkroom-clips.mlb.com https://bdata-producedclips.mlb.com https://cuts.diamond.mlb.com; connect-src 'self' ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: https://www.mlbstatic.com https://midfield.mlbstatic.com https://img.mlbstatic.com; media-src 'self' asset: http://asset.localhost blob: https://mlb-cuts-diamond.mlb.com https://darkroom-clips.mlb.com https://bdata-producedclips.mlb.com https://cuts.diamond.mlb.com https://sporty-clips.mlb.com; connect-src 'self' ipc: http://ipc.localhost"
     }
   },
   "bundle": {

@@ -4,7 +4,7 @@ use tauri::State;
 
 use super::{today_mlb, AppState};
 use crate::error::Result;
-use crate::mlb::{self, models::{GameSummary, Team}};
+use crate::mlb::{self, models::{GameSummary, Team, TeamStanding}};
 
 #[tauri::command]
 pub async fn get_teams(state: State<'_, AppState>) -> Result<Vec<Team>> {
@@ -43,4 +43,19 @@ pub async fn get_schedule_range(
 #[tauri::command]
 pub fn get_today() -> String {
     today_mlb()
+}
+
+/// Every team's win-loss record, for the season MLB is currently in.
+///
+/// Records also arrive on each schedule row (`leagueRecord`), but only for teams that
+/// happen to be playing. This command backs the places that need a record for a team
+/// with no game today — the team picker and the game log header.
+#[tauri::command]
+pub async fn get_standings(
+    state: State<'_, AppState>,
+    season: Option<String>,
+) -> Result<Vec<TeamStanding>> {
+    // The season is the MLB calendar year, not the machine's — see `today_mlb`.
+    let season = season.unwrap_or_else(|| today_mlb()[..4].to_string());
+    mlb::fetch_standings(&state.client, &season).await
 }

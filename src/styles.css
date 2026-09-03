@@ -1,13 +1,27 @@
-/* ballview — a dark, dense scoreboard aesthetic. */
+/*
+ * ballview — a dark, dense scoreboard aesthetic.
+ *
+ * Layout is a two-row, two-column grid: a full-width title bar over a collapsible rail
+ * and the main panel. The chrome is full-bleed, the content inside it is centred in a
+ * column that stops widening past a comfortable reading measure, so a play description
+ * never runs the length of a 34-inch monitor while the scoreboard still uses the space.
+ */
 
 :root {
-  --bg: #0e1116;
-  --bg-panel: #151a21;
-  --bg-raised: #1c232c;
-  --border: #262e39;
-  --text: #e6eaf0;
+  /* Surfaces, from the window background upward. */
+  --bg: #0b0e13;
+  --bg-panel: #12161d;
+  --bg-raised: #1a212b;
+  --bg-hover: #212a36;
+  --border: #232c38;
+  --border-strong: #33404f;
+
+  --text: #e8edf5;
   --text-muted: #8b97a8;
+  --text-dim: #5f6b7c;
+
   --accent: #4c9aff;
+  --accent-soft: rgba(76, 154, 255, 0.14);
   --live: #f5544c;
   --win: #3fb950;
   --loss: #8b97a8;
@@ -15,11 +29,22 @@
   --ball: #4c9aff;
   --in-play: #f0b429;
 
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 14px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.28);
+
+  /* Width of the sidebar; the collapsed state overrides it in one place. */
+  --rail: 210px;
+  --titlebar-h: 58px;
+
   color-scheme: dark;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 14px;
+  font-feature-settings: 'cv05' 1, 'ss03' 1;
   color: var(--text);
   background: var(--bg);
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -35,79 +60,218 @@ body {
   height: 100vh;
 }
 
+/* A visible ring on keyboard focus only — the app is mouse-first but must stay usable
+   from the keyboard, and a ring on every click would be noise. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/*
+ * Visually hidden, but deliberately NOT absolutely positioned.
+ *
+ * The usual `position: absolute` recipe anchors to the nearest positioned ancestor —
+ * and when there is none, that is the document itself. Inside a panel that does its own
+ * scrolling, such an element escapes the panel's clipping and stretches the document's
+ * scroll area to the full height of the content, which the webview then draws a second
+ * scrollbar for. An inline-block costs one pixel and cannot escape anything.
+ */
+.sr-only {
+  display: inline-block;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+}
+
+/* --- Shell ---------------------------------------------------------------- */
+
+/*
+ * `minmax(0, 1fr)` for the panel row, not a bare `1fr`.
+ *
+ * A `1fr` track's automatic minimum is its content's min-content size, so a long pitch
+ * feed inflates the row to tens of thousands of pixels. `.app` clips that, but the
+ * document still reports the overflow and the webview draws a second scrollbar behind
+ * the panel's own. Capping the minimum at 0 lets the track stay viewport-sized and
+ * leaves the scrolling to `.main`, where it belongs.
+ */
 .app {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-rows: var(--titlebar-h) minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
 }
 
-/* --- Sidebar --- */
-
-.sidebar {
-  background: var(--bg-panel);
-  border-right: 1px solid var(--border);
-  padding: 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  overflow-y: auto;
+/*
+ * Brand, navigation, club — in a three-column grid rather than a flex row.
+ *
+ * The middle column is what makes the navigation sit in the true centre of the window:
+ * with `1fr auto 1fr` the two side columns take the same share whatever the brand and
+ * the club picker happen to measure, so the nav does not drift left as a team name gets
+ * longer.
+ */
+.titlebar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: linear-gradient(180deg, #141922, #10151c);
+  border-bottom: 1px solid var(--border);
 }
+
+.titlebar-right {
+  justify-self: end;
+}
+
+/* --- Brand ---------------------------------------------------------------- */
 
 .brand {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0 0 4px 4px;
-  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
 }
 
-.nav {
+.bm-ball {
+  fill: #f4f6fa;
+}
+.bm-seam {
+  fill: none;
+  stroke: var(--live);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.bm-play {
+  fill: #0e1116;
+}
+
+.brand-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  line-height: 1.15;
 }
 
-.nav-item {
-  text-align: left;
+.brand-name {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.brand-sub {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-dim);
+}
+
+/* --- Primary navigation ---------------------------------------------------- */
+
+/*
+ * Four destinations as words, not buttons.
+ *
+ * A pill of small controls reads as a toolbar — something you operate. These are places
+ * you go, so they are set large and quiet, and the current one is marked by weight,
+ * colour and a rule beneath it rather than by a raised chip. The rule is drawn on a
+ * pseudo-element so switching sections cannot change any element's height and nudge the
+ * row.
+ */
+.segmented {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  height: var(--titlebar-h);
+}
+
+.seg {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   background: none;
   border: none;
-  color: var(--text-muted);
-  padding: 8px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
+  border-radius: 0;
+  color: var(--text-dim);
+  padding: 0 14px;
+  font-size: 15.5px;
+  letter-spacing: -0.01em;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: color 0.12s ease;
 }
 
-.nav-item:hover {
-  background: var(--bg-raised);
+.seg svg {
+  opacity: 0.75;
+}
+
+.seg::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+}
+
+.seg:hover {
   color: var(--text);
 }
 
-.nav-item.active {
-  background: var(--bg-raised);
+.seg.active {
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
+}
+.seg.active svg {
+  opacity: 1;
+  color: var(--accent);
+}
+.seg.active::after {
+  background: var(--accent);
 }
 
-.sidebar-section {
+.app-foot {
+  margin-top: 36px;
+  padding-top: 14px;
   border-top: 1px solid var(--border);
-  padding-top: 16px;
-}
-
-.sidebar-foot {
-  margin-top: auto;
   line-height: 1.5;
 }
 
-/* --- Main panel --- */
-
-.main {
-  overflow-y: auto;
-  padding: 20px 24px;
+/* On a narrow window the labels go and the icons carry the nav. */
+@media (max-width: 720px) {
+  .seg span {
+    display: none;
+  }
 }
 
-.panel {
-  max-width: 900px;
+/* --- Main ----------------------------------------------------------------- */
+
+.main {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/*
+ * Full width up to a limit, then centred.
+ *
+ * Two requirements pull against each other: use the whole window, and stay centred. The
+ * cap is set past the default window size so an ordinary desktop is edge to edge, while
+ * a 34-inch monitor gets gutters instead of a 2000px-wide line of play description.
+ */
+.container {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 22px 28px 56px;
 }
 
 .panel-head {
@@ -115,47 +279,127 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
-.panel-head h2 {
-  font-size: 18px;
+.panel-title h2 {
+  font-size: 21px;
   margin: 0;
-  font-weight: 600;
+  font-weight: 640;
+  letter-spacing: -0.02em;
 }
 
-/* --- Generic --- */
+.panel-title p {
+  margin: 3px 0 0;
+}
+
+.panel h2 {
+  font-size: 21px;
+  margin: 0;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+}
+
+/* --- Controls ------------------------------------------------------------- */
 
 button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   background: var(--bg-raised);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 12px;
-  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 7px 12px;
   font-size: 13px;
-  font-family: inherit;
+  font-weight: 500;
+  transition: background 0.12s, border-color 0.12s;
 }
 
-button:hover:not(:disabled) {
-  border-color: var(--accent);
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
 }
 
-button:disabled {
-  opacity: 0.5;
+.btn:disabled {
+  opacity: 0.45;
   cursor: default;
+}
+
+.btn.ghost {
+  background: none;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+.btn.ghost:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-raised);
+}
+
+.icon-only {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+.icon-only:hover:not(:disabled) {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.date-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px;
 }
 
 select {
   background: var(--bg-raised);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  padding: 7px 8px;
   font-size: 13px;
   font-family: inherit;
+}
+
+input[type='text'],
+.picker-search input {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: none;
+  border: none;
   width: 100%;
 }
+.picker-search input:focus {
+  outline: none;
+}
+
+.spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Generic -------------------------------------------------------------- */
 
 .row {
   display: flex;
@@ -173,12 +417,15 @@ select {
 .small {
   font-size: 12px;
 }
+.pad {
+  padding: 10px 12px;
+}
 
 .error-box {
   background: rgba(245, 84, 76, 0.08);
   border: 1px solid rgba(245, 84, 76, 0.3);
-  border-radius: 8px;
-  padding: 12px 14px;
+  border-radius: var(--radius);
+  padding: 14px 16px;
 }
 .error-box p {
   margin: 0 0 8px;
@@ -187,13 +434,82 @@ select {
   color: var(--live);
 }
 
+.skeleton-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skeleton {
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--bg-panel) 25%, var(--bg-raised) 50%, var(--bg-panel) 75%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+/* Motion here is decorative; anyone who has asked for less of it gets none. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .spinning,
+  .live-dot {
+    animation: none;
+  }
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  padding: 46px 20px;
+  background: var(--bg-panel);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.empty-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 15px;
+}
+.empty-state p {
+  margin: 0;
+  max-width: 42ch;
+  line-height: 1.5;
+}
+
 .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 3px 7px;
+  border-radius: 5px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 .badge.live {
   background: var(--live);
@@ -203,16 +519,201 @@ select {
   background: var(--bg-raised);
   color: var(--text-muted);
 }
+.badge.preview {
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
 .badge.saved {
   background: rgba(63, 185, 80, 0.15);
   color: var(--win);
 }
 .badge.type {
-  background: rgba(76, 154, 255, 0.15);
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
-/* --- Game list --- */
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* --- Logos and faces ------------------------------------------------------ */
+
+.team-logo {
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.team-logo.initials {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.headshot {
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+
+.headshot.initials {
+  display: inline-grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* --- Team picker ---------------------------------------------------------- */
+
+.team-picker {
+  position: relative;
+}
+
+.picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+  padding: 6px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  text-align: left;
+}
+.picker-trigger:hover {
+  background: var(--bg-hover);
+}
+
+.picker-labels {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.picker-name {
+  font-size: 13.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-record {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.picker-caret {
+  margin-left: auto;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.picker-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  /* Wide enough for "Washington Nationals" and a record on one line; anything narrower
+     truncates exactly the clubs with the longest names. */
+  width: 370px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 40;
+  overflow: hidden;
+}
+
+.picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+.picker-options {
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.picker-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-align: left;
+}
+
+.picker-option.active {
+  background: var(--bg-raised);
+}
+.picker-option.selected {
+  color: #cfe1ff;
+}
+
+.option-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.option-record {
+  font-variant-numeric: tabular-nums;
+}
+
+.option-check {
+  color: var(--accent);
+}
+
+.picker-clear {
+  width: 100%;
+  padding: 9px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-family: inherit;
+}
+.picker-clear:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+/* --- Game list ------------------------------------------------------------ */
 
 .game-list,
 .history-list,
@@ -226,41 +727,67 @@ select {
 }
 
 .game-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 10px;
 }
 
 .game-row {
+  position: relative;
   width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   text-align: left;
+  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+}
+
+.game-row:hover {
+  background: var(--bg-raised);
+  border-color: var(--border-strong);
 }
 
 .game-row.favorite {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--row-accent, var(--accent));
+}
+
+.game-row.is-live {
+  box-shadow: inset 0 0 0 1px rgba(245, 84, 76, 0.18);
+}
+
+.favorite-flag {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: var(--in-play);
+  line-height: 0;
 }
 
 .teams {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 8px;
   min-width: 0;
+  flex: 1;
 }
 
 .team-line {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-muted);
 }
 
+.team-line.winner {
+  color: var(--text);
+}
 .team-line.winner .team-name {
   font-weight: 600;
 }
@@ -269,61 +796,179 @@ select {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.team-record {
+  font-variant-numeric: tabular-nums;
 }
 
 .score {
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  min-width: 20px;
-}
-
-.score.big {
-  font-size: 28px;
+  font-weight: 650;
+  min-width: 22px;
+  text-align: right;
+  color: var(--text);
 }
 
 .game-state {
   display: flex;
   align-items: center;
-  gap: 8px;
   flex-shrink: 0;
 }
 
-.live-state {
+.state-stack {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
 }
 
-/* --- Game view --- */
+.first-pitch {
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
 
-.game-header {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px;
+.inning {
+  font-size: 12.5px;
+  font-weight: 550;
+}
+
+.venue {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Scoreboard ----------------------------------------------------------- */
+
+.game-sticky {
+  position: sticky;
+  top: -1px;
+  z-index: 20;
+  /* The scoreboard is the one thing worth keeping on screen while scrolling a long
+     play log, so it pins itself and the tabs come with it. */
+  background: var(--bg);
+  padding-top: 2px;
   margin-bottom: 16px;
 }
 
-.score-line {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  margin-bottom: 10px;
+.scoreboard {
+  background: linear-gradient(180deg, var(--bg-panel), #10151c);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px 12px;
+  box-shadow: var(--shadow);
 }
 
-.score-line .team {
+.scoreboard-main {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 20px;
+}
+
+.team-score {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Away sits left of centre reading logo → name → runs, home mirrors it, so both
+   clubs' logos land on the outer edges and the two scores meet in the middle. */
+.team-score.away {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.team-score.home {
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+
+.team-score-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+  /* The club's own colour appears as a rule under the name rather than as text or a
+     fill, so contrast stays the palette's job. */
+  border-bottom: 2px solid var(--team-accent, transparent);
+  padding-bottom: 3px;
+}
+
+.team-score-name {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-score-record {
+  font-variant-numeric: tabular-nums;
+}
+
+.runs {
+  font-size: 40px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.team-score.leading .runs {
+  color: var(--text);
+}
+
+.scoreboard-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 150px;
+}
+
+.inning-big {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.count-line {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.score-line .at {
-  color: var(--text-muted);
+.count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 15px;
 }
 
-.game-status {
-  justify-content: center;
+.outs {
+  display: inline-flex;
+  gap: 3px;
+  color: var(--live);
+}
+.out-pip {
+  color: var(--border-strong);
+}
+.out-pip.filled {
+  color: var(--live);
+}
+
+.refresh-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .bases {
@@ -337,7 +982,7 @@ select {
   width: 9px;
   height: 9px;
   transform: rotate(45deg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: transparent;
 }
 .base.occupied {
@@ -354,48 +999,170 @@ select {
   grid-area: third;
 }
 
+.inning-grid-wrap {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.inning-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.inning-grid th,
+.inning-grid td {
+  text-align: center;
+  padding: 3px 7px;
+  min-width: 24px;
+}
+
+.inning-grid thead th {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.inning-grid tbody th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding-right: 12px;
+}
+
+.inning-grid .rhe {
+  font-weight: 650;
+  color: var(--text);
+  border-left: 1px solid var(--border);
+}
+
+.inning-grid thead .rhe {
+  color: var(--text-muted);
+}
+
+/* --- Tabs ----------------------------------------------------------------- */
+
 .tabs {
   display: flex;
+  justify-content: center;
   gap: 2px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 16px;
+  margin-top: 14px;
+  background: var(--bg);
+  /* A narrow window keeps all five reachable rather than clipping the last one. */
+  overflow-x: auto;
 }
 
 .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   color: var(--text-muted);
-  padding: 8px 14px;
+  padding: 9px 14px;
+  font-size: 13.5px;
+  font-family: inherit;
+}
+
+.tab:hover {
+  color: var(--text);
 }
 
 .tab.active {
   color: var(--text);
   border-bottom-color: var(--accent);
+  font-weight: 550;
 }
 
-.back {
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  padding: 4px 0;
+.game-actions {
+  margin-bottom: 12px;
 }
 
-/* --- Play-by-play --- */
+/* --- Matchup card --------------------------------------------------------- */
+
+.matchup-card {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.matchup-side {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.matchup-side.right {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.matchup-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.matchup-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.matchup-middle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.matchup-count {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.matchup-deck {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  text-align: center;
+}
+
+/* --- Play-by-play --------------------------------------------------------- */
 
 .half-inning {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 .half-head {
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
   margin: 0 0 8px;
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
+}
+
+.half-runs {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
 .play {
@@ -410,14 +1177,15 @@ select {
 .play-summary {
   width: 100%;
   display: grid;
-  grid-template-columns: 130px 1fr auto;
+  grid-template-columns: auto 150px 1fr auto;
   gap: 12px;
-  align-items: baseline;
+  align-items: center;
   background: none;
   border: none;
   border-radius: 0;
-  padding: 10px 4px;
+  padding: 9px 6px;
   text-align: left;
+  color: inherit;
 }
 
 .play-summary:hover {
@@ -425,22 +1193,38 @@ select {
 }
 
 .play-event {
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 550;
 }
 
 .play-desc {
   color: var(--text-muted);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .play-meta {
   display: flex;
   gap: 10px;
   align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.chevron {
+  display: inline-flex;
+  color: var(--text-dim);
 }
 
 .play-detail {
-  padding: 4px 4px 16px 16px;
+  padding: 4px 6px 18px 18px;
+}
+
+.play-matchup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 12px;
 }
 
 .runners {
@@ -452,28 +1236,38 @@ select {
   color: var(--live);
 }
 
-/* --- Pitch view --- */
+/* --- Pitch view ----------------------------------------------------------- */
 
 .pitch-view {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 16px;
-  align-items: start;
   margin-top: 8px;
 }
 
+.pitch-view-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
 .strike-zone .sz-bg {
-  fill: var(--bg-panel);
+  fill: #0f141b;
   stroke: var(--border);
+}
+.strike-zone .sz-grid line {
+  stroke: var(--border);
+  stroke-width: 1;
 }
 .strike-zone .sz-box {
   fill: none;
-  stroke: var(--text-muted);
-  stroke-dasharray: 3 3;
+  stroke: var(--text-dim);
+  stroke-width: 1.5;
+}
+.strike-zone .sz-plate {
+  fill: var(--border-strong);
 }
 .strike-zone .sz-pitch {
   fill: var(--bg-raised);
-  stroke: var(--text-muted);
+  stroke: var(--text-dim);
 }
 .strike-zone .sz-pitch.strike {
   fill: var(--strike);
@@ -487,82 +1281,286 @@ select {
   fill: var(--in-play);
   stroke: none;
 }
+.strike-zone .sz-halo {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.5;
+  opacity: 0.75;
+}
 .strike-zone .sz-label {
   fill: #fff;
   font-size: 10px;
+  font-weight: 600;
   text-anchor: middle;
   pointer-events: none;
 }
+.strike-zone .sz-mark.clickable {
+  cursor: pointer;
+}
 
-.pitch-table,
-.fielding-table {
+.pitch-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
-.pitch-table th,
-.fielding-table th {
+.pitch-table th {
   text-align: left;
-  color: var(--text-muted);
+  color: var(--text-dim);
   font-weight: 500;
-  padding: 4px 8px 4px 0;
+  padding: 5px 8px 5px 0;
   border-bottom: 1px solid var(--border);
 }
 
-.pitch-table td,
-.fielding-table td {
-  padding: 4px 8px 4px 0;
+.pitch-table td {
+  padding: 5px 8px 5px 0;
   border-bottom: 1px solid var(--border);
 }
 
-.fielding-table .has-error {
-  color: var(--live);
+.pitch-table .num {
+  font-variant-numeric: tabular-nums;
+}
+
+.pitch-table tr.selectable {
+  cursor: pointer;
+}
+.pitch-table tr.selectable:hover {
+  background: var(--bg-panel);
+}
+.pitch-table tr.selected {
+  background: var(--accent-soft);
+}
+
+/* The numbered pip ties a table row to its dot in the strike zone. */
+.pitch-pip {
+  display: inline-grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--bg-raised);
+}
+.pitch-pip.strike {
+  background: var(--strike);
+}
+.pitch-pip.ball {
+  background: var(--ball);
+}
+.pitch-pip.in-play {
+  background: var(--in-play);
+  color: #1a1300;
 }
 
 .hit-detail {
-  grid-column: 1 / -1;
-  margin: 4px 0 0;
+  margin: 10px 0 0;
 }
 
 .pitch-at-bat {
-  padding: 12px 0;
+  padding: 14px 0;
   border-bottom: 1px solid var(--border);
 }
-.pitch-at-bat h4 {
-  margin: 0 0 4px;
-  font-weight: 500;
+
+.at-bat-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 4px;
 }
 
-/* --- Fielders --- */
-
-.fielder-view section {
-  margin-bottom: 24px;
-}
-.fielder-view h3 {
-  font-size: 13px;
+.inning-chip {
+  font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
+  background: var(--bg-raised);
+  border-radius: 5px;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+
+.at-bat-people {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.at-bat-names {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.at-bat-result {
+  margin-left: auto;
+}
+
+/* --- Ball path ------------------------------------------------------------ */
+
+.pitch-path-block {
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.path-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 10px;
 }
+
+.ball-path-views {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.path-view {
+  margin: 0;
+}
+
+.path-view figcaption {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 4px;
+  line-height: 1.3;
+}
+
+.path-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.path-view svg {
+  width: 100%;
+  height: auto;
+  background: #0f141b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.path-ground,
+.path-centre {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+.path-centre {
+  stroke-dasharray: 3 4;
+}
+
+.path-zone {
+  fill: rgba(232, 237, 245, 0.1);
+  stroke: var(--text-dim);
+  stroke-width: 1;
+}
+
+/* The spinless reference, and the full flight behind the animated trail. */
+.path-reference {
+  fill: none;
+  stroke: var(--text-dim);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+.path-actual-ghost {
+  fill: none;
+  stroke: rgba(76, 154, 255, 0.22);
+  stroke-width: 2;
+}
+.path-actual {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+.path-ball {
+  fill: #fff;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.ball-path-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.icon-btn {
+  padding: 5px 10px;
+}
+
+.path-legend {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 16px;
+  height: 0;
+  border-top-width: 2px;
+  border-top-style: solid;
+}
+.swatch.solid {
+  border-color: var(--accent);
+}
+.swatch.dashed {
+  border-top-style: dashed;
+  border-color: var(--text-dim);
+}
+
+.path-break {
+  margin-left: auto;
+}
+
+/* --- The field ------------------------------------------------------------ */
 
 .field-diagram {
   position: relative;
   width: 100%;
-  max-width: 420px;
+  max-width: 460px;
   aspect-ratio: 1;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
-.field-grass {
+.field-art {
   position: absolute;
-  inset: 8%;
-  background: radial-gradient(circle at 50% 95%, rgba(63, 185, 80, 0.12), transparent 70%);
-  border-radius: 50% 50% 8% 8%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.field-outfield {
+  fill: rgba(63, 185, 80, 0.09);
+}
+.field-infield {
+  fill: rgba(196, 124, 74, 0.12);
+}
+.field-diamond {
+  fill: none;
+  stroke: rgba(232, 237, 245, 0.18);
+  stroke-width: 0.7;
+}
+
+.field-mound {
+  fill: rgba(196, 124, 74, 0.25);
 }
 
 .fielder-dot {
@@ -577,75 +1575,128 @@ select {
 }
 
 .fielder-dot .pos {
+  margin-top: -9px;
   background: var(--accent);
   color: #fff;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  font-weight: 600;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 700;
   font-size: 9px;
+  border: 1px solid var(--bg-panel);
 }
 
 .fielder-dot .who {
-  color: var(--text-muted);
+  color: var(--text);
+  font-weight: 500;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 }
 
 .credit-list li {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  grid-template-columns: 150px 1fr;
   gap: 12px;
-  padding: 6px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--border);
-  font-size: 12px;
+  font-size: 12.5px;
 }
 
 .credit-fielder {
   display: block;
 }
 
-/* --- History --- */
+/* --- History and saved ---------------------------------------------------- */
+
+.log-head {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+}
+
+.log-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.log-identity .team-logo {
+  padding: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--row-accent, var(--accent)) 18%, transparent);
+}
 
 .history-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .history-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 96px 1fr auto auto;
-  gap: 12px;
+  grid-template-columns: 84px minmax(0, 1fr) auto auto;
+  gap: 14px;
   align-items: center;
   text-align: left;
   background: none;
   border: none;
   border-bottom: 1px solid var(--border);
-  border-radius: 0;
-  padding: 10px 4px;
+  border-radius: var(--radius-sm);
+  padding: 9px 8px;
+  color: inherit;
 }
 
 .history-row:hover {
   background: var(--bg-panel);
 }
 
-.result {
+.date {
+  font-variant-numeric: tabular-nums;
+}
+
+.opponent {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.opponent-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-away {
+  width: 18px;
+  flex-shrink: 0;
+}
+
+.result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .outcome {
+  display: inline-grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
   font-weight: 700;
-  width: 16px;
+  font-size: 11px;
 }
 .outcome.w {
   color: var(--win);
+  background: rgba(63, 185, 80, 0.14);
 }
 .outcome.l {
-  color: var(--loss);
+  color: var(--live);
+  background: rgba(245, 84, 76, 0.12);
+}
+.outcome.t {
+  color: var(--text-muted);
+  background: var(--bg-raised);
 }
 
 .flags {
@@ -653,52 +1704,114 @@ select {
   gap: 6px;
 }
 
-/* --- Highlights --- */
+/* --- Highlights ----------------------------------------------------------- */
 
 .player {
-  margin-bottom: 16px;
+  margin-bottom: 18px;
 }
 
 .video {
   width: 100%;
-  max-height: 460px;
+  max-height: 480px;
   background: #000;
-  border-radius: 8px;
+  border-radius: var(--radius);
+}
+
+.player-bar {
+  padding-top: 8px;
 }
 
 .clip-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 10px;
 }
 
 .clip {
   display: grid;
-  grid-template-columns: 120px 1fr auto;
+  grid-template-columns: 132px minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
   padding: 10px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
+}
+
+.clip.playing {
+  border-color: var(--accent);
+}
+
+.clip-thumb-btn {
+  position: relative;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  line-height: 0;
+}
+.clip-thumb-btn:disabled {
+  cursor: default;
 }
 
 .thumb {
-  width: 120px;
+  width: 132px;
   aspect-ratio: 16 / 9;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-raised);
 }
 
+.thumb.placeholder {
+  display: block;
+}
+
+.thumb-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.clip-thumb-btn:hover .thumb-play {
+  opacity: 1;
+}
+
+.thumb-duration {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 3px;
+  padding: 1px 4px;
+  line-height: 1.4;
+}
+
+.clip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
 .clip-title {
-  font-weight: 500;
-  margin-bottom: 2px;
+  font-weight: 550;
 }
 
 .clip-body p {
-  margin: 0 0 4px;
-  line-height: 1.4;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.clip-body .badge {
+  align-self: flex-start;
 }
 
 .clip-actions {
@@ -707,7 +1820,1987 @@ select {
   gap: 6px;
 }
 
-.favorites label {
+/* --- Narrow windows ------------------------------------------------------- */
+
+@media (max-width: 1000px) {
+  .pitch-view-top {
+    grid-template-columns: 1fr;
+  }
+  .container {
+    padding: 18px 16px 44px;
+  }
+}
+
+/* --- Condensed scoreboard -------------------------------------------------- */
+
+/*
+ * The sticky header shrinks as soon as the panel scrolls.
+ *
+ * A full scoreboard is 190px of the window; keeping it pinned while reading a long play
+ * log costs a quarter of the screen for information that has not changed. The condensed
+ * strip keeps the four things that do change — who, the score, the inning, the count —
+ * in 44px, and a chevron restores the rest.
+ */
+.game-sticky.condensed {
+  padding-top: 0;
+}
+
+.scoreboard {
+  position: relative;
+  transition: padding 0.15s ease;
+}
+
+.scoreboard.condensed {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 44px 8px 16px;
+  border-radius: var(--radius);
+}
+
+.cs-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.cs-team.right {
+  justify-content: flex-start;
+}
+
+.cs-abbr {
+  font-weight: 650;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.cs-runs {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 20px;
+  text-align: center;
+}
+
+.cs-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.scoreboard-toggle {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+}
+.scoreboard-toggle:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+/* Takes no space; exists only so the collapse effect can find its scroll container. */
+.scroll-anchor {
+  height: 0;
+}
+
+/* --- Current play --------------------------------------------------------- */
+
+.play.current > .play-summary {
+  background: rgba(76, 154, 255, 0.06);
+}
+
+.now-chip {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--live);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* The at-bat in progress gets its pitches and the defence side by side; a finished one
+   keeps the single column, where a second picture would only be decoration. */
+.play-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 340px);
+  gap: 24px;
+  align-items: start;
+}
+
+.play-split-field .split-head {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+@media (max-width: 1100px) {
+  .play-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Field diagram, compact ------------------------------------------------ */
+
+.field-diagram.compact {
+  max-width: 340px;
+}
+
+.field-diagram.compact .fielder-dot .pos {
+  font-size: 8px;
+  padding: 0 3px;
+}
+
+/* A fielder credited on the play is lit; everyone else recedes. */
+.fielder-dot.active .pos {
+  background: var(--in-play);
+  color: #1a1300;
+}
+.fielder-dot.active .headshot {
+  border-color: var(--in-play);
+  box-shadow: 0 0 0 2px rgba(240, 180, 41, 0.35);
+}
+
+/* --- Live view ------------------------------------------------------------- */
+
+.live-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.live-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.live-side {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.live-side.right {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.live-names {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  min-width: 0;
+}
+.live-names strong {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-count {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.live-count .count {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Selector, picture, numbers — the same three columns the replay uses.
+ *
+ * The frame is the subject, so it takes the middle and the two side columns are fixed:
+ * that is what keeps the picture in the centre of the window instead of wherever the
+ * panel's widest line happens to leave it.
+ */
+.live-stage {
+  display: grid;
+  /* The two side columns are the same width on purpose: unequal ones put the frame's
+     centre 60-odd pixels left of the window's, which is visible the moment you look for
+     it. */
+  grid-template-columns: 232px minmax(0, 1fr) 232px;
+  gap: 18px;
+  align-items: start;
+  max-width: 1220px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.live-frame {
+  display: flex;
+  justify-content: center;
+}
+
+@media (max-width: 1100px) {
+  .live-stage {
+    grid-template-columns: 1fr;
+  }
+}
+
+.umpire-view,
+.live-field {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+}
+
+/*
+ * The frame is square, and at full column width it would be taller than the window —
+ * putting the plate, the one thing this view exists to show, below the fold. Sizing the
+ * box off the viewport height instead keeps the whole picture on screen, and matching
+ * the width to it means no empty letterbox bands down either side.
+ */
+.umpire-view {
+  width: min(100%, 56vh);
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  overflow: hidden;
+}
+
+.umpire-view svg {
   display: block;
-  margin-bottom: 6px;
+  width: 100%;
+  height: 100%;
+}
+
+.umpire-view.empty {
+  display: grid;
+  place-items: center;
+  min-height: 260px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
+.live-field {
+  display: grid;
+  place-items: center;
+  padding: 14px;
+}
+
+/* Umpire view internals */
+.uv-ground {
+  fill: #16251a;
+}
+.uv-dirt {
+  fill: #2c2318;
+}
+.uv-mound {
+  fill: #3b2f22;
+  stroke: rgba(232, 237, 245, 0.07);
+  stroke-width: 1;
+}
+.uv-horizon {
+  stroke: rgba(232, 237, 245, 0.12);
+  stroke-width: 1;
+}
+.uv-chalk polygon {
+  fill: #e8edf5;
+  opacity: 0.32;
+}
+.uv-zone {
+  fill: rgba(232, 237, 245, 0.05);
+  stroke: rgba(232, 237, 245, 0.55);
+  stroke-width: 1.5;
+}
+.uv-zone-grid line {
+  stroke: rgba(232, 237, 245, 0.16);
+  stroke-width: 1;
+}
+.uv-trail {
+  fill: #e8edf5;
+}
+.uv-ball circle {
+  fill: #ffffff;
+}
+.uv-ball.strike circle {
+  fill: #ffd9d7;
+}
+.uv-ball.ball circle {
+  fill: #d7e7ff;
+}
+.uv-ball.in-play circle {
+  fill: #ffeab5;
+}
+.uv-ball .uv-ball-rim {
+  fill: none;
+  stroke: rgba(208, 52, 44, 0.75);
+  stroke-width: 2;
+}
+
+/* Live side panel */
+.live-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.live-card {
+  padding: 12px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.live-card.in-play {
+  border-color: rgba(240, 180, 41, 0.4);
+  background: rgba(240, 180, 41, 0.06);
+}
+
+.live-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.live-speed {
+  margin: 0 0 10px;
+  font-size: 34px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.live-speed .unit {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.live-event {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.live-stats {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.live-stats div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+}
+.live-stats dt {
+  color: var(--text-muted);
+}
+.live-stats dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-sequence {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.live-pips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.pitch-pip.current {
+  box-shadow: 0 0 0 2px var(--bg-panel), 0 0 0 3.5px #fff;
+}
+
+.live-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.live-result {
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  line-height: 1.5;
+}
+
+/* --- Pitch toolbar and view switch ----------------------------------------- */
+
+.pitch-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+/* The pips are the pitch selector in both views, so they are buttons here. */
+button.pitch-pip {
+  border: none;
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  transition: transform 0.1s;
+}
+button.pitch-pip:hover {
+  transform: scale(1.12);
+}
+
+.view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.vs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-muted);
+  padding: 5px 10px;
+  font-size: 12.5px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.vs:hover {
+  color: var(--text);
+}
+.vs.active {
+  background: var(--bg-raised);
+  color: var(--text);
+  font-weight: 550;
+}
+
+/* The umpire view inside a play row: smaller than the live tab's, and paired with the
+   pitch's numbers rather than standing alone. */
+.pitch-umpire {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(200px, 280px);
+  gap: 18px;
+  align-items: start;
+}
+
+.pitch-umpire .umpire-view {
+  width: min(100%, 40vh);
+  margin: 0;
+}
+
+.pitch-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.pitch-facts .live-speed {
+  font-size: 28px;
+  margin: 0;
+}
+.pitch-facts .live-card-head {
+  margin: 0;
+}
+.pitch-facts .btn {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.pitch-untracked {
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  max-width: 52ch;
+}
+
+@media (max-width: 900px) {
+  .pitch-umpire {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Player stats ---------------------------------------------------------- */
+
+.range-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.range-chip {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+.range-chip:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.range-chip.active {
+  background: var(--accent-soft);
+  border-color: rgba(76, 154, 255, 0.4);
+  color: #cfe1ff;
+  font-weight: 550;
+}
+
+.range-dates {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 6px;
+}
+.range-dates input {
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 12.5px;
+  font-family: inherit;
+  color-scheme: dark;
+}
+
+.search-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+}
+.search-box input {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  width: 180px;
+}
+.search-box input:focus {
+  outline: none;
+}
+
+/* The table scrolls under its own header, so a long leaderboard does not push the
+   filters off the top of the window. */
+.stats-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.stats-body.with-preview {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+}
+
+@media (max-width: 1100px) {
+  .stats-body.with-preview {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stats-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.stats-table th.num,
+.stats-table td.num {
+  text-align: right;
+}
+
+.stats-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.stats-table th.sortable:hover {
+  color: var(--text);
+}
+.stats-table th.sorted {
+  color: var(--accent);
+}
+.stats-table th.sorted svg {
+  vertical-align: -1px;
+  margin-left: 3px;
+}
+
+.stats-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.stats-table tbody tr {
+  cursor: pointer;
+}
+.stats-table tbody tr:hover {
+  background: var(--bg-raised);
+}
+.stats-table tbody tr.selected {
+  background: var(--accent-soft);
+}
+
+.col-rank {
+  width: 40px;
+  text-align: right;
+  padding-right: 12px;
+}
+
+.col-player {
+  min-width: 240px;
+}
+td.col-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stats-name {
+  font-weight: 550;
+  color: var(--text);
+}
+
+/* --- Player preview -------------------------------------------------------- */
+
+.player-preview {
+  position: relative;
+  padding: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--row-accent, var(--accent));
+  border-radius: var(--radius);
+}
+
+.preview-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+}
+.preview-close:hover {
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.preview-head {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.preview-shot {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-raised);
+  border: 2px solid var(--row-accent, var(--border));
+  flex-shrink: 0;
+}
+
+.preview-id {
+  min-width: 0;
+}
+.preview-id h3 {
+  margin: 0 0 3px;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.preview-id p {
+  margin: 0;
+}
+
+.preview-team {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-bottom: 2px !important;
+}
+
+.preview-bio {
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.preview-bio div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.preview-bio dt {
+  color: var(--text-muted);
+}
+.preview-bio dd {
+  margin: 0;
+  text-align: right;
+}
+
+.preview-section {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 8px;
+}
+.preview-grid div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 8px;
+  background: var(--bg-raised);
+  border-radius: var(--radius-sm);
+}
+.pg-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+.pg-value {
+  font-size: 14px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The qualified toggle sits with the range chips but reads as a switch, not a choice
+   among them, so it keeps a gap and shows its own checkbox. */
+.range-chip.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 10px;
+}
+
+/* --- Replay ---------------------------------------------------------------- */
+
+.replay-view {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .replay-view {
+    grid-template-columns: 1fr;
+  }
+  .replay-list {
+    max-height: 240px;
+  }
+}
+
+/* The list scrolls on its own so an eighty-at-bat game does not push the viewer off
+   the bottom of the window. */
+.replay-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 62vh;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.replay-list-head {
+  padding: 4px 6px 8px;
+  margin: 0;
+  position: sticky;
+  top: -6px;
+  background: var(--bg-panel);
+  z-index: 1;
+}
+
+.replay-row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-align: left;
+}
+.replay-row:hover {
+  background: var(--bg-raised);
+}
+.replay-row.active {
+  background: var(--accent-soft);
+}
+.replay-row.scoring .replay-batter {
+  color: var(--in-play);
+}
+
+.replay-inning {
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-row-body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+.replay-batter {
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.replay-row-body .muted {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.replay-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.replay-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.replay-names {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.replay-result {
+  margin-left: auto;
+  font-weight: 550;
+}
+
+/* Play log: the hand-off button, and the read-only sequence table. */
+.watch-btn {
+  margin-left: auto;
+}
+
+.pitch-table.compact {
+  max-width: 620px;
+  margin-top: 4px;
+}
+
+.min-games {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 10px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.min-games input {
+  width: 58px;
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 12.5px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Calendar -------------------------------------------------------------- */
+
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.calendar-head h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  min-width: 180px;
+  text-align: center;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.calendar-weekday {
+  padding: 4px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 10.5px;
+}
+
+.calendar-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 74px;
+  padding: 5px 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* A day with no game still gets a cell — the gaps in a schedule are information. */
+.calendar-cell.off {
+  background: transparent;
+  border-style: dashed;
+}
+.calendar-cell.empty {
+  background: none;
+  border: none;
+  min-height: 0;
+}
+
+.calendar-date {
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.calendar-game {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 4px 5px;
+  background: var(--bg-raised);
+  border: none;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 4px;
+  color: inherit;
+  font-size: 11.5px;
+  text-align: left;
+}
+.calendar-game:hover {
+  background: var(--bg-hover);
+}
+.calendar-game.w {
+  border-left-color: var(--win);
+}
+.calendar-game.l {
+  border-left-color: var(--live);
+}
+
+.cg-side {
+  width: 14px;
+  flex-shrink: 0;
+  font-size: 10.5px;
+}
+.cg-score {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.calendar-game.w .cg-score strong {
+  color: var(--win);
+}
+.calendar-game.l .cg-score strong {
+  color: var(--live);
+}
+
+/* On the replay tab the frame is the subject, not an inset: it takes the height the live
+   view gets rather than the smaller size used inside a play row, and the column it sits
+   in stretches so there is no dead band between the picture and its numbers. */
+.replay-stage .pitch-umpire {
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 280px);
+}
+.replay-stage .pitch-umpire .umpire-view,
+.replay-stage .pitch-field .field-diagram {
+  width: min(100%, 62vh);
+  max-width: none;
+  margin: 0 auto;
+}
+
+/* --- Play detail: table and plot side by side ------------------------------ */
+
+/*
+ * The pitch table is 620px at its widest and the row it sits in is the full width of
+ * the window, which left a third of an expanded play empty. The plot fills it with the
+ * one thing the table cannot show: where the pitches actually were.
+ */
+.play-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: start;
+}
+
+/* Stretched to meet the plot: capped at 620px the table left a gap in the middle of
+   the row, which read as a broken layout rather than as breathing room. */
+.play-detail-grid .pitch-table.compact {
+  max-width: none;
+  width: 100%;
+}
+
+.play-detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .play-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .play-detail-side {
+    align-items: flex-start;
+  }
+}
+
+/* --- Pitch selector rail ---------------------------------------------------- */
+
+/*
+ * One card per pitch, in a column beside the viewer.
+ *
+ * The cards started as a row across the top, which broke twice over: a long at-bat
+ * pushed the view tabs off the end of the toolbar, and wrapping to a second line moved
+ * the picture down the screen every time the count went full. A column scrolls instead,
+ * so the frame below it never moves however many pitches an at-bat runs to.
+ */
+.pitch-view {
+  display: grid;
+  grid-template-columns: minmax(0, 168px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.pitch-main {
+  min-width: 0;
+}
+
+.pitch-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 62vh;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.rail-head {
+  position: sticky;
+  top: -6px;
+  margin: 0;
+  padding: 2px 4px 6px;
+  background: var(--bg-panel);
+  z-index: 1;
+}
+
+button.pitch-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 9px 6px 7px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+button.pitch-card:hover {
+  background: var(--bg-raised);
+}
+button.pitch-card.current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+button.pitch-card .pitch-pip {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  flex: none;
+}
+
+.pc-body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+.pc-type {
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-speed {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Below the replay list's own breakpoint the rail lies down instead, where a horizontal
+   scroll costs nothing because the tabs have a line to themselves anyway. */
+@media (max-width: 1000px) {
+  .pitch-view {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pitch-rail {
+    flex-direction: row;
+    max-height: none;
+    overflow-x: auto;
+  }
+  .rail-head {
+    display: none;
+  }
+  button.pitch-card {
+    width: auto;
+    flex: none;
+  }
+}
+
+/* --- The pitch clip --------------------------------------------------------- */
+
+.pitch-clip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.pitch-clip video {
+  width: 100%;
+  max-height: 62vh;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* --- The batted ball over the alignment ------------------------------------ */
+
+.pitch-field {
+  display: flex;
+  justify-content: center;
+}
+/* The field stands in for the umpire frame, so it takes the same footprint. */
+.pitch-field .field-diagram {
+  width: min(100%, 52vh);
+  max-width: 520px;
+}
+
+.ball-flight {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.bf-path {
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 0.6;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 2 2;
+}
+
+.bf-ball,
+.bf-shadow {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.bf-ball {
+  width: 11px;
+  height: 11px;
+  background: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.65);
+  z-index: 3;
+}
+
+/* The gap between the ball and its shadow is the only height cue a top-down view has. */
+.bf-shadow {
+  width: 9px;
+  height: 5px;
+  background: #000;
+  transform: translate(-50%, -50%);
+  filter: blur(1px);
+  z-index: 2;
+}
+
+.bf-mark {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid var(--in-play);
+  border-radius: 50%;
+  animation: bf-land 0.45s ease-out;
+  z-index: 2;
+}
+
+@keyframes bf-land {
+  from {
+    transform: scale(0.3);
+    opacity: 0.2;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.pitch-hit {
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+.pitch-hit .live-event {
+  margin: 2px 0 8px;
+  font-weight: 600;
+}
+
+/* --- Box score -------------------------------------------------------------- */
+
+.boxscore {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.box-switch {
+  align-self: center;
+}
+.box-switch .vs {
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 13.5px;
+}
+
+/* Every part of the box score shares one centred measure, so the headings, the tables
+   and the footnotes all line up down the same edge. */
+.box-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.box-tables > section,
+.box-notes {
+  width: 100%;
+  max-width: 1020px;
+  margin: 0 auto;
+}
+
+.box-head {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+/*
+ * Capped, not full-bleed.
+ *
+ * Stretched across a 1440px window the numbers end up an inch apart with the names
+ * marooned on the left, and reading across a row becomes work. The cap keeps a row
+ * scannable; the section is centred so both tables line up under each other.
+ */
+.box-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.box-table th {
+  text-align: right;
+  color: var(--text-dim);
+  font-weight: 500;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.box-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+}
+
+.box-table tbody tr:hover {
+  background: var(--bg-panel);
+}
+
+/* The name column carries the row; the numbers are all the same width and can be
+   narrow, so it takes whatever is left. */
+/* A fixed width, not a percentage: the cell is a flex row (headshot beside name), and a
+   percentage on a flex cell collapses to its content's minimum — which ellipsised every
+   name to a single letter. */
+.box-table th.box-name,
+.box-table td.box-name {
+  text-align: left;
+  width: 260px;
+  min-width: 260px;
+}
+
+.box-table td.box-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* A substitute sits under the slot they took over, stepped in, the way a printed box
+   score sets them. */
+.box-table td.box-name.sub {
+  padding-left: 28px;
+}
+
+.box-player {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.box-decision {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.box-table tfoot td {
+  font-weight: 600;
+  border-bottom: none;
+  border-top: 1px solid var(--border);
+}
+
+/* MLB's own footnotes. Two columns, because they are read a line at a time rather than
+   scanned, and a single column of short lines wastes the width. */
+.box-notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+  padding-top: 4px;
+}
+
+.box-note-block h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 6px;
+}
+
+.box-note-block dl {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.box-note-block dt {
+  color: var(--text-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 6px;
+}
+
+.box-note-block dd {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.box-note-block ul {
+  margin: 0;
+  padding-left: 16px;
+  line-height: 1.6;
+}
+
+/* --- Charts ----------------------------------------------------------------- */
+
+.chart {
+  position: relative;
+  width: 100%;
+  padding: 8px 0 4px;
+}
+
+.chart svg {
+  display: block;
+  overflow: visible;
+}
+
+.chart-empty {
+  padding: 60px 0;
+  text-align: center;
+}
+
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.chart-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.chart-tick {
+  fill: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.chart-tick.right {
+  text-anchor: start;
+}
+.chart-axis-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.chart-line {
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chart-line.dashed {
+  stroke-dasharray: 5 4;
+}
+.chart-dot {
+  opacity: 0.9;
+}
+.chart-dot-hover {
+  stroke-width: 2;
+}
+.chart-point-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+}
+
+/* Follows the cursor, so it is positioned rather than laid out. */
+.chart-tip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  z-index: 3;
+}
+.chart-tip-value {
+  font-size: 15px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+  padding-top: 10px;
+}
+.chart-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+}
+.chart-swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+}
+.chart-swatch.dashed {
+  opacity: 0.6;
+}
+.chart-x-label {
+  text-align: center;
+  margin: 4px 0 0;
+}
+
+/* --- Compare screen --------------------------------------------------------- */
+
+.compare {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.compare-controls,
+.compare-axes {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.compare-hint {
+  padding: 48px 0;
+  text-align: center;
+}
+
+.stat-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.stat-select select {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+.axis-fixed {
+  padding: 6px 0;
+}
+
+.zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.zoom input {
+  width: 108px;
+  accent-color: var(--accent);
+}
+.zoom-value {
+  font-size: 12.5px;
+  min-width: 66px;
+}
+
+.range-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  padding: 5px 11px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+.chip:hover {
+  color: var(--text);
+}
+.chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.date-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.date-field input {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 5px 7px;
+  color-scheme: dark;
+}
+
+/* --- The player picker ------------------------------------------------------ */
+
+.player-picker {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.picked {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* The chip's left border is the series colour, which ties a name on this row to a line
+   on the chart without a second legend. */
+.picked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px 5px 5px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.picker-search {
+  position: relative;
+  min-width: 240px;
+}
+
+.picker-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  z-index: 5;
+}
+.picker-results button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+}
+.picker-results button:hover {
+  background: var(--bg-panel);
+}
+.pr-name {
+  font-weight: 550;
+}
+.picker-none {
+  padding: 8px;
+}
+
+/* --- Spotlight -------------------------------------------------------------- */
+
+.spotlight {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.spotlight-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 22px;
+}
+
+.spot-leader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(180deg, var(--bg-panel), var(--bg));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: inherit;
+  text-align: left;
+  font-family: inherit;
+}
+.spot-leader:hover {
+  border-color: var(--accent);
+}
+
+.spot-leader-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.spot-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+.spot-line {
+  color: var(--in-play);
+  font-size: 13.5px;
+}
+
+.spot-score {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.spot-rest {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.spot-rest button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+}
+.spot-rest button:hover {
+  background: var(--bg-panel);
+}
+.spot-rest-name {
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.spot-rest-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.spot-rest-score {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.spotlight-note {
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  line-height: 1.6;
+}
+
+/* --- Modal ------------------------------------------------------------------ */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 40;
+}
+
+.modal {
+  width: min(760px, 100%);
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 18px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.modal-close {
+  margin-left: auto;
+}
+.modal-line {
+  margin: 0 0 14px;
+}
+.modal-table {
+  margin-bottom: 18px;
+}
+.modal-clips-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.modal-clips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.clip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 0 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  overflow: hidden;
+}
+.clip-card img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+.clip-card span {
+  padding: 0 8px;
+  line-height: 1.35;
+}
+.clip-card:hover,
+.clip-card.playing {
+  border-color: var(--accent);
+}
+
+.modal-video {
+  width: 100%;
+  margin-top: 12px;
+  border-radius: var(--radius-sm);
+  background: #000;
+}
+
+.players-screen .tabs {
+  margin-top: 0;
+  margin-bottom: 16px;
 }

@@ -117,6 +117,59 @@ fn boxscore_fixture_parses_fielding_stats() {
     assert!(home.players.keys().all(|k| k.starts_with("ID")));
 }
 
+/// The box score tab is only as good as these fields, and every one of them is an
+/// undocumented key that MLB could rename.
+#[test]
+fn boxscore_fixture_parses_the_lines_the_box_score_shows() {
+    let box_: Boxscore = serde_json::from_str(&fixture("boxscore_822688.json")).unwrap();
+    let away = box_
+        .teams
+        .as_ref()
+        .and_then(|t| t.away.as_ref())
+        .expect("no away team");
+
+    // A batter in the lineup, with a game line and a season rate to show beside it.
+    let batter = away
+        .players
+        .values()
+        .find(|p| {
+            p.batting_order.is_some()
+                && p.stats
+                    .as_ref()
+                    .and_then(|s| s.batting.as_ref())
+                    .and_then(|b| b.at_bats)
+                    .unwrap_or(0)
+                    > 0
+        })
+        .expect("no batter with at-bats");
+    let season = batter
+        .season_stats
+        .as_ref()
+        .and_then(|s| s.batting.as_ref())
+        .expect("no season batting line");
+    assert!(season.avg.is_some(), "no season average to show in the AVG column");
+    assert!(season.ops.is_some(), "no season OPS");
+
+    // A pitcher, whose innings are a string ("4.2" is four and two thirds).
+    let pitcher = away
+        .players
+        .get(&format!("ID{}", away.pitchers.first().expect("no pitchers")))
+        .expect("pitcher missing from the players map");
+    let line = pitcher
+        .stats
+        .as_ref()
+        .and_then(|s| s.pitching.as_ref())
+        .expect("no pitching line");
+    let ip = line.innings_pitched.as_deref().expect("no inningsPitched");
+    assert!(ip.contains('.'), "inningsPitched is not the expected string: {ip}");
+    assert!(line.batters_faced.is_some() && line.pitches_thrown.is_some());
+
+    // Team totals close each table, and the footnotes sit under them.
+    let totals = away.team_stats.as_ref().expect("no teamStats");
+    assert!(totals.batting.as_ref().and_then(|b| b.at_bats).is_some());
+    assert!(!away.info.is_empty(), "no box-score footnotes");
+}
+
 #[test]
 fn content_fixture_yields_playable_highlights() {
     let content: GameContent = serde_json::from_str(&fixture("content_822688.json")).unwrap();
