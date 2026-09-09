@@ -13,7 +13,7 @@ TypeScript frontend.
 
 ## Download
 
-**[⬇ Download ballview for Windows (v0.1.0)](https://github.com/larryamiel/ballview/releases/download/v0.1.0/ballview_0.1.0_x64-setup.exe)** — 3.9 MB installer
+**[⬇ Download ballview for Windows (v0.1.0)](https://github.com/larryamiel/ballview/releases/download/v0.1.0/ballview_0.1.0_x64-setup.exe)** — 4 MB installer, no dependencies
 
 No account, no API key, no configuration. Install, pick a club, and it starts logging.
 Newer builds are on the [releases page](https://github.com/larryamiel/ballview/releases/latest).
