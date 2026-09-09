@@ -2,9 +2,15 @@
  * App shell: one title bar over one panel. No sidebar.
  *
  * Three destinations do not earn a permanent column of the window. They live in the
- * title bar as a segmented control, which puts the brand, the navigation and the
- * followed club on one line and hands the entire width below it to the game — where a
- * scoreboard, a play log and a pitch view all actually want the room.
+ * title bar as a segmented control, which hands the entire width below it to the game —
+ * where a scoreboard, a play log and a pitch view all actually want the room.
+ *
+ * The club picker used to sit in the title bar's right column. It has moved into My
+ * Team, the one section it changes: on the day's games, the league leaderboard and the
+ * saved-game list it was a control with nothing to do, and a permanently visible control
+ * reads as one that applies to whatever is on screen. The right column stays in the grid
+ * even though it is now empty — it is what keeps the navigation in the window's true
+ * centre rather than 90px left of it.
  *
  * The panel below is full-bleed; the content inside it is centred in a column that stops
  * widening past a comfortable measure, so a play description never runs the length of a
@@ -17,10 +23,9 @@ import { Archive, CalendarDays, Star, Users } from 'lucide-react';
 
 import { GameList } from './components/GameList';
 import { GameView } from './components/GameView';
-import { HistoryLog } from './components/HistoryLog';
+import { MyTeam } from './components/MyTeam';
 import { PlayersScreen } from './components/PlayersScreen';
 import { SavedGames } from './components/SavedGames';
-import { TeamPicker } from './components/TeamPicker';
 import { Brand } from './components/ui/Brand';
 import * as api from './lib/api';
 import { useAppStore, type MainView } from './store/useAppStore';
@@ -74,9 +79,9 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="titlebar-right">
-          <TeamPicker favoriteTeamId={favoriteTeamId} />
-        </div>
+        {/* Empty, and deliberately still here: the title bar is a `1fr auto 1fr` grid,
+            and removing this column would shove the navigation off centre. */}
+        <div className="titlebar-right" />
       </header>
 
       <main className="main">
@@ -92,7 +97,7 @@ export default function App() {
               {view === 'games' && (
                 <GameList favoriteTeamId={favoriteTeamId} pollMs={pollMs} />
               )}
-              {view === 'history' && <HistoryLog favoriteTeamId={favoriteTeamId} />}
+              {view === 'history' && <MyTeam favoriteTeamId={favoriteTeamId} />}
               {view === 'stats' && <PlayersScreen />}
               {view === 'saved' && <SavedGames />}
             </>

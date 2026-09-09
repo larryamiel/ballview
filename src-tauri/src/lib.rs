@@ -44,6 +44,10 @@ pub fn run() {
             // spotlight
             commands::spotlight::get_top_performers,
             commands::spotlight::get_player_highlights,
+            // play of the day, league-wide
+            commands::plays::get_top_plays,
+            // club news
+            commands::news::get_team_news,
             // live
             commands::live::get_live_feed,
             commands::live::get_boxscore,

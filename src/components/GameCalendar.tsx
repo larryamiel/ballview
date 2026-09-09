@@ -6,13 +6,16 @@
  * was really a bad month. Same entries, laid out on the shape of the season.
  *
  * Months come from the entries themselves rather than a date library: a baseball season
- * is six months long and the log already knows which ones it covers.
+ * is six months long and the log already knows which ones it covers. Now that the log
+ * carries the whole season, those months run past today — an unplayed cell shows first
+ * pitch rather than a score, which is what a schedule is for.
  */
 
 import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import type { HistoryEntry } from '../lib/types';
+import { firstPitch } from './HistoryLog';
 import { TeamLogo } from './ui/TeamLogo';
 
 interface Props {
@@ -44,8 +47,16 @@ export function GameCalendar({ entries, teamId, onOpen }: Props) {
     return [...set].sort();
   }, [byDate]);
 
-  // Open on the most recent month with games in it.
-  const [monthIndex, setMonthIndex] = useState(() => Math.max(0, months.length - 1));
+  // Open on the month containing today, which is the one a follower is asking about:
+  // the last week of results and the next week of fixtures are both on it. Falling back
+  // to the last month with games keeps a finished season opening on its own end rather
+  // than on an empty December.
+  const [monthIndex, setMonthIndex] = useState(() => {
+    const now = new Date();
+    const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const at = months.indexOf(thisMonth);
+    return at >= 0 ? at : Math.max(0, months.length - 1);
+  });
   const month = months[Math.min(monthIndex, months.length - 1)];
 
   if (!month) return null;
@@ -128,14 +139,18 @@ function DayCell({
                 ? 'l'
                 : 't'
             : null;
+        // An unplayed game has no result to show, so the cell shows the time instead.
+        const time = game.isFinal ? null : firstPitch(game);
 
         return (
           <button
             key={game.gamePk}
-            className={`calendar-game${outcome ? ` ${outcome}` : ''}`}
+            className={`calendar-game${outcome ? ` ${outcome}` : ''}${
+              game.isFinal ? '' : ' upcoming'
+            }`}
             onClick={() => onOpen(game)}
             title={`${isHome ? 'vs' : '@'} ${opponent ?? 'TBD'}${
-              us != null && them != null ? ` · ${us}-${them}` : ''
+              us != null && them != null ? ` · ${us}-${them}` : time ? ` · ${time}` : ''
             }`}
           >
             <span className="cg-side muted">{isHome ? 'vs' : '@'}</span>
@@ -145,7 +160,7 @@ function DayCell({
                 <strong>{outcome.toUpperCase()}</strong> {us}-{them}
               </span>
             ) : (
-              <span className="cg-score muted">—</span>
+              <span className="cg-score muted">{time ?? '—'}</span>
             )}
           </button>
         );

@@ -193,3 +193,52 @@ pub fn savant_pitch_csv(person_id: i64, start: &str, end: &str) -> String {
          &min_pitches=0&min_results=0"
     )
 }
+
+// ---------------------------------------------------------------------------
+// The most recent completed slate, league highlights, and club news
+// ---------------------------------------------------------------------------
+
+/// MLB's own news site, which is where the RSS feeds live. Not the Stats API.
+pub const MLB_WWW: &str = "https://www.mlb.com";
+
+/// A date range with **no hydration at all** — game ids, dates and statuses only.
+///
+/// Used to answer "which was the last day baseball was actually played", which needs
+/// nothing but the status. The hydrated variants pull a linescore per game, and a month
+/// of those is several megabytes for a question a few kilobytes can answer.
+pub fn schedule_plain(start: &str, end: &str) -> String {
+    format!("{STATS_API}/schedule?sportId={SPORT_ID_MLB}&startDate={start}&endDate={end}")
+}
+
+/// A whole day's slate with every game's highlight reel attached.
+///
+/// One request rather than one `game/{pk}/content` call per game: a fifteen-game slate
+/// would otherwise be fifteen round trips before the first clip could be ranked.
+pub fn schedule_with_highlights(date: &str) -> String {
+    // No `team` hydration: the schedule already names both clubs by id and name, and
+    // this response is large enough without a full club record per side.
+    format!(
+        "{STATS_API}/schedule?sportId={SPORT_ID_MLB}&date={date}\
+         &hydrate=game(content(highlights(highlights)))"
+    )
+}
+
+/// One club's record, which is where its `teamName` — and therefore its slug — comes from.
+pub fn team(team_id: u32) -> String {
+    format!("{STATS_API}/teams/{team_id}")
+}
+
+/// A club's news feed on mlb.com.
+///
+/// `slug` is mlb.com's own path segment, which is the club name lowercased with every
+/// non-alphanumeric character removed: "D-backs" → `dbacks`, "Red Sox" → `redsox`,
+/// "Blue Jays" → `bluejays`. Verified against all thirty clubs — see
+/// `commands::news::team_slug`.
+pub fn team_news_rss(slug: &str) -> String {
+    format!("{MLB_WWW}/{slug}/feeds/news/rss.xml")
+}
+
+/// League-wide news, for when no club is followed yet.
+pub fn league_news_rss() -> String {
+    format!("{MLB_WWW}/feeds/news/rss.xml")
+}

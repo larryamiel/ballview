@@ -32,6 +32,13 @@ pub struct HistoryEntry {
     pub game_pk: i64,
     #[serde(default)]
     pub game_date: Option<String>,
+    /// First pitch as a UTC instant, e.g. "2026-09-08T23:05:00Z".
+    ///
+    /// `game_date` is the calendar day a game belongs to and is all a played game needs.
+    /// An unplayed one needs the time as well -- "Fri" is not an answer to when to be in
+    /// front of the television -- and only this field carries it.
+    #[serde(default)]
+    pub start_time: Option<String>,
     /// `R` regular, `S` spring, `P`/`D`/`L`/`W` postseason rounds, `E` exhibition.
     #[serde(default)]
     pub game_type: Option<String>,
@@ -71,6 +78,7 @@ impl HistoryEntry {
         Self {
             game_pk: game.game_pk,
             game_date: game.official_date.clone().or_else(|| game.game_date.clone()),
+            start_time: game.game_date.clone(),
             game_type: game.game_type.clone(),
             away_team: name(away),
             home_team: name(home),

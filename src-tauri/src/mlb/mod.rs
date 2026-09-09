@@ -212,6 +212,8 @@ pub fn flatten_highlights(content: GameContent) -> Vec<Highlight> {
             url: best_playback(&item.playbacks),
             thumbnail: best_thumbnail(item.image.as_ref()),
             player_ids: player_ids(&item.keywords_all),
+            team_ids: keyword_ids(&item.keywords_all, "team_id"),
+            tags: tags(&item.keywords_all),
         });
     }
     out
@@ -258,12 +260,37 @@ fn best_playback(playbacks: &[Playback]) -> Option<String> {
 /// Both `player` ("playerid-676979") and `player_id` ("676979") appear for the same
 /// person, so only the plain numeric form is read and the list is de-duplicated.
 fn player_ids(keywords: &[ContentKeyword]) -> Vec<i64> {
+    keyword_ids(keywords, "player_id")
+}
+
+/// Numeric ids of one keyword kind, sorted and de-duplicated.
+///
+/// MLB publishes each id twice — once prefixed ("teamid-119", kind `team`) and once
+/// bare ("119", kind `team_id`) — so only the bare form is read.
+fn keyword_ids(keywords: &[ContentKeyword], kind: &str) -> Vec<i64> {
     let mut out: Vec<i64> = keywords
         .iter()
-        .filter(|k| k.kind.as_deref() == Some("player_id"))
+        .filter(|k| k.kind.as_deref() == Some(kind))
         .filter_map(|k| k.value.as_ref()?.parse::<i64>().ok())
         .collect();
     out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// The clip's subject tags, lowercased.
+///
+/// `taxonomy` carries the editorial labels ("home-run", "condensed-game") and `mlbtax`
+/// the canonical ones ("mlb_recap"); both are kept because neither is complete on its
+/// own — a condensed game is marked `condensed_game` in one and `condensed-game` in the
+/// other, and only `mlb_recap` reliably marks a recap.
+fn tags(keywords: &[ContentKeyword]) -> Vec<String> {
+    let mut out: Vec<String> = keywords
+        .iter()
+        .filter(|k| matches!(k.kind.as_deref(), Some("taxonomy") | Some("mlbtax")))
+        .filter_map(|k| k.value.as_ref().map(|v| v.to_lowercase()))
+        .collect();
+    out.sort();
     out.dedup();
     out
 }
@@ -523,4 +550,86 @@ pub fn flatten_sabermetrics(resp: SabermetricsResponse) -> Vec<SabermetricRow> {
         }
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// The last day baseball was played, league highlights, and club news
+// ---------------------------------------------------------------------------
+
+/// The most recent date in `[start, end]` on which a game reached Final, if any.
+///
+/// This exists because "today" is almost never the right window for a leaderboard. At
+/// nine in the morning US Eastern no game has been played yet, so a day-long window
+/// over today returns an empty response and every ranking built on it comes back with
+/// nobody in it — which is what "Player of the Day doesn't work" looks like from the
+/// outside. Ranking the last *completed* slate is the honest answer, and the window that
+/// was actually used is returned to the caller so the UI can say which day it means.
+pub async fn fetch_last_played_date(
+    client: &MlbClient,
+    start: &str,
+    end: &str,
+) -> Result<Option<String>> {
+    let resp: ScheduleResponse = client
+        .get_json(&endpoints::schedule_plain(start, end))
+        .await?;
+    Ok(latest_final_date(resp))
+}
+
+/// The latest `officialDate` carrying a Final game. Split out to be testable offline.
+pub fn latest_final_date(resp: ScheduleResponse) -> Option<String> {
+    resp.dates
+        .into_iter()
+        .flat_map(|d| d.games)
+        .filter(|g| g.status.as_ref().map(|s| s.is_final()).unwrap_or(false))
+        .filter_map(|g| g.official_date.or(g.game_date))
+        .map(|d| d[..10.min(d.len())].to_string())
+        .max()
+}
+
+/// Every clip from every game on one date, with the game each came from.
+pub async fn fetch_slate_highlights(
+    client: &MlbClient,
+    date: &str,
+) -> Result<Vec<(HighlightScheduleGame, Vec<Highlight>)>> {
+    // The one request in the app that genuinely needs the long budget: a slate's worth
+    // of reels is megabytes, and MLB is slow to assemble it.
+    let resp: HighlightScheduleResponse = client
+        .get_json_slow(&endpoints::schedule_with_highlights(date))
+        .await?;
+    Ok(split_slate_highlights(resp))
+}
+
+/// Pair each game with its flattened clip list. Testable without a network call.
+pub fn split_slate_highlights(
+    resp: HighlightScheduleResponse,
+) -> Vec<(HighlightScheduleGame, Vec<Highlight>)> {
+    resp.dates
+        .into_iter()
+        .flat_map(|d| d.games)
+        .map(|game| {
+            let clips = match game.content.clone() {
+                Some(content) => flatten_highlights(content),
+                None => Vec::new(),
+            };
+            (game, clips)
+        })
+        .collect()
+}
+
+/// One club's record, for the fields the team list does not carry into a command.
+pub async fn fetch_team(client: &MlbClient, team_id: u32) -> Result<Team> {
+    let resp: TeamsResponse = client.get_json(&endpoints::team(team_id)).await?;
+    resp.teams
+        .into_iter()
+        .next()
+        .ok_or_else(|| crate::error::Error::Parse(format!("no team {team_id}")))
+}
+
+/// A news feed as raw RSS. Parsing lives in `commands::news`, which owns the shape.
+pub async fn fetch_news_feed(client: &MlbClient, slug: Option<&str>) -> Result<String> {
+    let url = match slug {
+        Some(slug) => endpoints::team_news_rss(slug),
+        None => endpoints::league_news_rss(),
+    };
+    client.get_text(&url).await
 }

@@ -1223,6 +1223,15 @@ pub struct Highlight {
     /// Player ids the clip is tagged with.
     #[serde(default)]
     pub player_ids: Vec<i64>,
+    /// Club ids the clip is tagged with — usually both sides of the game.
+    #[serde(default)]
+    pub team_ids: Vec<i64>,
+    /// MLB's own subject tags for the clip ("home-run", "defense", "mlb_recap").
+    ///
+    /// The taxonomy is what separates a play from a nine-minute condensed game, which
+    /// is otherwise indistinguishable from a headline alone.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1381,4 +1390,74 @@ pub struct PitchSpeedPoint {
     pub max_speed: f64,
     #[serde(default)]
     pub avg_spin: Option<f64>,
+}
+
+// ---------------------------------------------------------------------------
+// A slate hydrated with highlights  —  the play-of-the-day ranking
+// ---------------------------------------------------------------------------
+
+/// The schedule read through `endpoints::schedule_with_highlights`.
+///
+/// A separate, deliberately minimal model rather than a `content` field on
+/// `GameSummary`: that struct is serialized to the frontend on every schedule call, and
+/// a slate's worth of highlight metadata is roughly two megabytes that no schedule view
+/// has any use for. Here only the clips and enough game context to label them are read.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct HighlightScheduleResponse {
+    #[serde(default)]
+    pub dates: Vec<HighlightScheduleDate>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct HighlightScheduleDate {
+    #[serde(default)]
+    pub games: Vec<HighlightScheduleGame>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HighlightScheduleGame {
+    #[serde(default)]
+    pub game_pk: i64,
+    #[serde(default)]
+    pub official_date: Option<String>,
+    #[serde(default)]
+    pub teams: Option<ScheduleTeams>,
+    #[serde(default)]
+    pub content: Option<GameContent>,
+}
+
+/// One clip in the league-wide ranking, with the game it came from.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TopPlay {
+    pub game_pk: i64,
+    pub date: Option<String>,
+    pub away_team: Option<String>,
+    pub home_team: Option<String>,
+    pub away_team_id: Option<i64>,
+    pub home_team_id: Option<i64>,
+    /// Every club the clip is tagged with — how a "my team only" filter is applied.
+    pub team_ids: Vec<i64>,
+    /// Why it ranked, in the app's own words ("Walk-off", "Home run", "Defence").
+    pub reason: String,
+    pub score: f64,
+    pub clip: Highlight,
+}
+
+// ---------------------------------------------------------------------------
+// Club news  —  mlb.com's RSS feeds
+// ---------------------------------------------------------------------------
+
+/// One article from a club's news feed.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewsItem {
+    pub title: String,
+    pub link: String,
+    /// RFC 2822 as published ("Wed, 09 Sep 2026 06:42:00 GMT"), normalized to RFC 3339.
+    pub published: Option<String>,
+    pub author: Option<String>,
+    pub image: Option<String>,
+    pub summary: Option<String>,
 }

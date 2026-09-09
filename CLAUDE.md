@@ -16,6 +16,7 @@ logs that team's games to an on-disk history. Games are saved as plain files —
 | --- | --- | --- |
 | MLB Stats API (`statsapi.mlb.com`) | Official, keyless | Schedule, teams, live feed, play-by-play, boxscore, linescore, highlights |
 | Baseball Savant / Statcast | Official, keyless | Pitch-level and fielder coordinates for richer views |
+| mlb.com RSS (`www.mlb.com/{slug}/feeds/news/rss.xml`) | Official, keyless | Club news. The Stats API publishes no editorial content, so this is the only source |
 | Highlightly (**not in v1**) | Third-party, paid/freemium | Bundled video highlights. Deliberately out of scope — see PLAN.md assumptions |
 
 Key MLB Stats API endpoints:
@@ -30,6 +31,8 @@ Key MLB Stats API endpoints:
 - `GET /api/v1/game/{gamePk}/boxscore` / `/linescore` — fielding positions and line score
 - `GET /api/v1/standings?leagueId=103,104&season=YYYY` — every club's W-L, division rank,
   games back and streak. Hydrate `division` for `nameShort` ("AL East")
+- `GET /api/v1/schedule?...&hydrate=game(content(highlights(highlights)))` — a whole
+  slate's clips in one request, which is what the league-wide play ranking reads
 
 > Caveat: the MLB Stats API is reverse-engineered and undocumented — no stability guarantee,
 > no published rate limits. Treat endpoints/fields as subject to change and centralize all
@@ -53,7 +56,14 @@ exported to any folder as a single file. History logs reference saved games by `
 
 1. **Current game list** — today's live/upcoming/final games with score + inning state.
 2. **Favorite a team** — persist one (or more) favorite team ids.
-3. **Favorited team's history log** — chronological list of that team's games, cross-referenced with saved files.
+3. **My Team** — one club, three sections under one identity header: its **schedule**
+   (the whole season, played *and* still to come), its **news**, and the **plays** worth
+   watching. The club selector lives here and nowhere else.
+3b. **Schedule** — chronological list or calendar of that team's games, cross-referenced
+   with saved files. Filterable to Season / Played / Upcoming.
+3c. **News** — the club's own mlb.com feed, opened in the system browser.
+3d. **Play of the day** — the best clips from across the league, rankable down to the
+   followed club alone.
 4. **Play-by-play of each pitch** — per-pitch events, count, result, runners.
 5. **Box score** — every player's batting and pitching line for the game, both sides,
    with MLB's own footnotes. The defensive alignment is no longer a tab of its own: the
@@ -92,7 +102,8 @@ ballview/
 ├── package.json / vite.config.ts / tsconfig.json / index.html
 ├── src/                       # React frontend
 │   ├── App.tsx  main.tsx
-│   ├── components/            # GameList, GameView, ScoreBoard, PlayByPlay, PitchView, BallPath,
+│   ├── components/            # MyTeam, TeamNews, TopPlays,
+│   │                          #   GameList, GameView, ScoreBoard, PlayByPlay, PitchView, BallPath,
 │   │                          #   LiveView, ReplayView, UmpireView, FieldDiagram, Matchup,
 │   │                          #   BoxScore, HighlightPlayer, HistoryLog, GameCalendar,
 │   │                          #   TeamPicker, PlayerStats, PlayerPreview, PitchPlot,
@@ -108,7 +119,8 @@ ballview/
         ├── main.rs  lib.rs
         ├── mlb/               # client.rs, models.rs, endpoints.rs, savant.rs (ALL external HTTP here)
         ├── storage/           # config.rs, game_files.rs
-        └── commands/          # schedule.rs, live.rs, favorites.rs, history.rs, media.rs (Tauri commands)
+        └── commands/          # schedule.rs, live.rs, favorites.rs, history.rs, media.rs,
+                               #   plays.rs (play of the day), news.rs (RSS) (Tauri commands)
 ```
 
 ## Tauri command surface (Rust → frontend)
@@ -125,7 +137,10 @@ ballview/
 - `get_player_range(person_id, group, start, end, season?)` — one windowed line per player
 - `search_players(query, season?, limit?)` — ranked name search for the chart picker
 - `get_pitch_speeds(person_id, start, end)` — Statcast release speed, averaged per day
-- `get_top_performers(period, date?, season?, limit?)` — the spotlight ranking
+- `get_top_performers(period, date?, season?, limit?)` — the spotlight ranking. With no
+  `date`, anchored on the **last completed slate**, not today
+- `get_top_plays(date?, teamId?, limit?)` — the league-wide play-of-the-day ranking
+- `get_team_news(teamId?, limit?)` — the club's mlb.com news feed, parsed from RSS
 - `get_player_highlights(game_pk, person_id)` — a game's clips, filtered to one player
 - `get_favorite_team()` / `set_favorite_team(team_id)`
 - `save_game(game_pk, snapshot)` / `list_saved_games(team_id?)` / `load_game(game_pk)` / `export_game(game_pk, path)`
@@ -156,10 +171,9 @@ npm run tauri build    # production Windows installer
   without re-checking the framing pushes the strike zone off the picture.
 - There is no sidebar: navigation is the title bar's centre column (`App.tsx`), so the
   whole width below it belongs to the game. The title bar is a `1fr auto 1fr` grid —
-  that is what keeps the nav in the true centre as the brand and the club picker change
-  width. Section *labels* are "My Team" and "Players"; the store's ids are still
-  `history` and `stats`, and renaming those would invalidate nothing but is not worth
-  the churn.
+  that is what keeps the nav in the true centre as the brand changes width. Section
+  *labels* are "My Team" and "Players"; the store's ids are still `history` and `stats`,
+  and renaming those would invalidate nothing but is not worth the churn.
 - A game's tabs are Live · Replay · Play-by-play · Box score · Highlights, centred under
   the scoreboard. The live and replay stages are both selector · picture · numbers, and
   the two side columns are deliberately the *same* width: unequal ones put the frame's
@@ -190,7 +204,45 @@ npm run tauri build    # production Windows installer
   reads as a velocity drop that is really a pitch-selection change.
 - `GameCalendar` is My Team's default layout; the list is the alternative. Months come
   from the log's own entries, so a season with no games renders nothing rather than an
-  empty January.
+  empty January. It opens on the month containing today, which is the one holding both
+  the last week of results and the next week of fixtures.
+- **Never anchor a "recent form" window on today.** `today_mlb()` is the right answer for
+  "which slate is on", but the wrong one for any ranking: at nine in the morning US
+  Eastern no game has been played, so a day-long window over today returns an empty
+  response and the leaderboard ranks nobody — which is exactly what "Player of the Day
+  doesn't work" looked like. `commands::last_completed_slate` resolves the most recent
+  date carrying a Final game (14 days back in season, 150 in the offseason) and both the
+  spotlight and the play ranking use it. The season follows that date, not the wall
+  clock: in January the last slate is the previous autumn's.
+- The history log is the club's **schedule**, not an archive: `refresh_history` reads the
+  whole season in one request, forwards as well as back, so unplayed games are logged
+  with `is_final: false` and a `start_time`. Re-reading the season each refresh rather
+  than only the days since the last entry is what makes a postponement, a rescheduled
+  makeup and a new result all correct without a rule for each — the response is the
+  truth and the upsert is idempotent. First pitch is the one time in the app rendered in
+  the *machine's* timezone: "when should I be watching" is a question about where the
+  viewer sits, and a clock time is not a baseball day.
+- The play-of-the-day ranking (`commands/plays.rs`) is ballview's own judgement — MLB
+  puts no rating on a clip — and every weight is written down in that module. Two rules
+  are load-bearing: taxonomy tags are counted **once at their maximum**, never summed
+  (a long homer carries `home-run`, `long-home-runs` *and* `hitting`, and adding them up
+  made an ordinary 450-foot homer outrank a walk-off on real data), while headline
+  phrases *do* compound. At most two clips come from any one game, or a seven-homer
+  blowout owns the whole list.
+- `get_top_plays` is the one request that uses `MlbClient::get_json_slow`. A slate
+  hydrated with every game's reel is ~2MB that MLB is slow to assemble, and it was
+  reliably exceeding the ordinary 20s budget; a poll-driven call must never wait that
+  long, so the 90s budget is opted into per call rather than raised for everything.
+- Club news comes from mlb.com's RSS, addressed by a slug that is the club's `teamName`
+  lowercased with non-alphanumerics stripped — "D-backs" → `dbacks`, "Red Sox" →
+  `redsox`. Verified against all thirty clubs. The parser in `commands/news.rs` is
+  hand-written rather than a general XML dependency: one publisher, a fixed shape, and
+  everything read is rendered as text. It decodes `&#x3D;` for the same reason the Savant
+  scraper does — left encoded, a media URL 404s.
+- The club picker lives in **My Team only**, not the title bar. On the day's games, the
+  league leaderboard and the saved list it was a control with nothing to do, and a
+  permanently visible one reads as applying to whatever is on screen. The title bar's
+  right column is now empty but still in the grid — it is what keeps the nav centred.
 - The batted ball in `FieldDiagram` is placed from `hitData.coordinates`, MLB's old
   stringer grid: home plate at (125.42, 198.27), y growing *down*, ~2.5 ft to the unit.
   The scale is undocumented — it was derived from the fixture, where three fly balls'

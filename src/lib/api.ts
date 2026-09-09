@@ -11,6 +11,8 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   Boxscore,
   Config,
+  NewsItem,
+  TopPlays,
   GameLogSplit,
   GameSnapshot,
   GameSummary,
@@ -197,6 +199,22 @@ export const getTopPerformers = (
 /** The clips one player appears in, from one game. */
 export const getPlayerHighlights = (gamePk: number, personId: number) =>
   invoke<Highlight[]>('get_player_highlights', { gamePk, personId });
+
+// --- Play of the day, and club news ----------------------------------------
+
+/**
+ * The best plays from one day across the whole league.
+ *
+ * Omit `date` for the last slate that was actually played — which is not today for most
+ * of the day, and the response says so via `resolvedBack`. `teamId` narrows the ranking
+ * to clips tagged with one club.
+ */
+export const getTopPlays = (date?: string, teamId?: number, limit?: number) =>
+  invoke<TopPlays>('get_top_plays', { date, teamId, limit });
+
+/** Articles about a club, newest first. Omit `teamId` to use the followed one. */
+export const getTeamNews = (teamId?: number, limit?: number) =>
+  invoke<NewsItem[]>('get_team_news', { teamId, limit });
 
 /**
  * Tauri rejects with a plain string (see `error.rs`), so `unknown` reaches catch blocks.

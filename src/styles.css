@@ -3804,3 +3804,424 @@ button.pitch-card .pitch-pip {
   margin-top: 0;
   margin-bottom: 16px;
 }
+
+/* ===========================================================================
+   My Team: the club header, and the three sections under it
+   ===========================================================================
+
+   The club identity sits above the tabs rather than inside any one of them, so the
+   schedule, the news and the highlights are all read as belonging to the same club.
+   The picker is right-aligned in that header — the one place in the app it appears. */
+
+/* These tabs are a section header, not the game view's centred strip: they sit under
+   the club they belong to, left-aligned with its name. */
+.my-team > .tabs {
+  margin-top: 4px;
+  justify-content: flex-start;
+  padding-left: 2px;
+}
+
+.my-team .tab-body {
+  padding-top: 20px;
+}
+
+.row.center {
+  justify-content: center;
+  margin-top: 18px;
+}
+
+/* --- Schedule ------------------------------------------------------------- */
+
+.schedule-panel .panel-head {
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.schedule-panel .panel-title h3 {
+  font-size: 16px;
+  margin: 0;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+
+.schedule-foot {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* A game not yet played has no result to carry, so its row is quieter than one that
+   does — the eye should land on what happened before it lands on what is coming. */
+.history-row.upcoming .opponent-name {
+  color: var(--text-muted);
+}
+
+.calendar-game.upcoming {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-left: 3px solid var(--border-strong);
+}
+
+.calendar-game.upcoming:hover {
+  background: var(--bg-panel);
+}
+
+.calendar-game.upcoming .cg-score {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- News ----------------------------------------------------------------- */
+
+.news-lead {
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  overflow: hidden;
+  color: inherit;
+}
+
+.news-lead:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-raised);
+}
+
+.news-lead img {
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  max-height: 220px;
+  object-fit: cover;
+  display: block;
+}
+
+.news-lead-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px 18px 0;
+  min-width: 0;
+}
+
+.news-lead-headline {
+  font-size: 19px;
+  font-weight: 640;
+  line-height: 1.28;
+  letter-spacing: -0.015em;
+}
+
+.news-lead-summary {
+  font-size: 13.5px;
+  line-height: 1.5;
+  /* Three lines is a standfirst; more is the article, which lives on mlb.com. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.news-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+
+.news-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 8px;
+  color: inherit;
+}
+
+.news-row:hover {
+  background: var(--bg-panel);
+}
+
+.news-thumb {
+  width: 96px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 5px;
+  display: block;
+}
+
+.news-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.news-headline {
+  font-size: 14px;
+  font-weight: 540;
+  line-height: 1.35;
+}
+
+.news-out {
+  color: var(--text-dim);
+  flex: none;
+}
+
+.news-row:hover .news-out {
+  color: var(--accent);
+}
+
+/* --- Play of the day ------------------------------------------------------ */
+
+.play-lead {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-panel);
+}
+
+.play-lead video,
+.play-lead-poster {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: none;
+  padding: 0;
+}
+
+.play-lead-poster {
+  position: relative;
+  cursor: pointer;
+}
+
+.play-lead-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* The play button is the affordance; the scrim is what keeps it legible over a bright
+   thumbnail of a sunlit outfield. */
+.play-lead-go {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(transparent 40%, rgba(0, 0, 0, 0.45));
+}
+
+.play-lead-go svg {
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  padding: 14px;
+  width: 22px;
+  height: 22px;
+  box-sizing: content-box;
+}
+
+.play-lead-poster:hover .play-lead-go svg {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.play-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 560;
+  letter-spacing: 0.01em;
+  color: #fff;
+}
+
+.play-badge.small {
+  top: 6px;
+  left: 6px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+}
+
+.play-lead-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 16px;
+}
+
+.play-grid {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.play-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+
+.play-thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+
+.play-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.play-card:hover .play-thumb {
+  border-color: var(--accent);
+}
+
+.play-duration {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+}
+
+.play-card-title {
+  font-size: 13.5px;
+  font-weight: 540;
+  line-height: 1.35;
+}
+
+.play-matchup {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.play-matchup .at {
+  margin: 0 2px;
+  color: var(--text-dim);
+}
+
+.play-modal video {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  background: #000;
+  margin-bottom: 10px;
+}
+
+/* The lead play is a stage beside its caption, not a full-bleed billboard: at the
+   panel's full width a 16:9 poster is over 700px tall, which pushes the rest of the
+   ranking off the screen entirely. Capping the poster column keeps the runners-up
+   visible without scrolling, which is the whole point of a ranking. */
+.play-lead {
+  display: grid;
+  grid-template-columns: minmax(0, 620px) minmax(0, 1fr);
+  align-items: center;
+}
+
+.play-lead-caption {
+  padding: 18px 22px;
+  gap: 8px;
+}
+
+.play-lead-caption strong {
+  font-size: 18px;
+  font-weight: 640;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+}
+
+/* In the two-column layout the badge would sit over the poster's top-left corner and
+   read as part of the picture; beside the headline it reads as a label for it. */
+.play-lead-reason {
+  align-self: start;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 3px 11px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.play-lead-poster .play-badge {
+  display: none;
+}
+
+/* One column below the point where a 620px poster plus a caption stops fitting. */
+@media (max-width: 1000px) {
+  .play-lead {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .news-lead {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .news-lead-body {
+    padding: 16px 18px;
+  }
+}
+
+/* The thumbnail slot is always in the grid, image or not — an article with no picture
+   must not pull the headline into the 96px column. */
+.news-thumb {
+  width: 96px;
+  height: 54px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--bg-raised);
+  display: block;
+  flex: none;
+}
+
+.news-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Abbreviated in a card, where a wrapped "Arizona Diamondbacks" costs two lines under
+   every thumbnail and tells the reader nothing the logo has not already. */
+.play-matchup.short {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}

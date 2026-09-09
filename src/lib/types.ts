@@ -435,6 +435,45 @@ export interface Highlight {
   /** `null` when MLB lists the clip but exposes no playable mp4. */
   url?: string | null;
   thumbnail?: string | null;
+  /** Players the clip is tagged with, by MLB's own keyword. */
+  playerIds?: number[];
+  /** Clubs the clip is tagged with — usually both sides of the game. */
+  teamIds?: number[];
+  /** MLB's subject tags ("home-run", "defense", "mlb_recap"). */
+  tags?: string[];
+}
+
+/** One clip in the league-wide play-of-the-day ranking. */
+export interface TopPlay {
+  gamePk: number;
+  date?: string | null;
+  awayTeam?: string | null;
+  homeTeam?: string | null;
+  awayTeamId?: number | null;
+  homeTeamId?: number | null;
+  teamIds: number[];
+  /** Why it ranked, in the app's words: "Walk-off", "Robbed a home run"… */
+  reason: string;
+  score: number;
+  clip: Highlight;
+}
+
+export interface TopPlays {
+  date: string;
+  /** The slate is not today's, because today has not been played yet. */
+  resolvedBack: boolean;
+  plays: TopPlay[];
+}
+
+/** One article from a club's mlb.com news feed. */
+export interface NewsItem {
+  title: string;
+  link: string;
+  /** RFC 3339, or null when the feed's date would not parse. */
+  published?: string | null;
+  author?: string | null;
+  image?: string | null;
+  summary?: string | null;
 }
 
 // --- Statcast (Phase 4b, optional) -----------------------------------------
@@ -531,6 +570,8 @@ export interface Config {
 export interface HistoryEntry {
   gamePk: number;
   gameDate?: string | null;
+  /** First pitch as a UTC instant. Present on games that have not been played yet. */
+  startTime?: string | null;
   gameType?: string | null;
   awayTeam?: string | null;
   homeTeam?: string | null;
@@ -636,6 +677,8 @@ export interface Performer {
 export interface Spotlight {
   start: string;
   end: string;
+  /** The window fell back off today, because today has not been played yet. */
+  resolvedBack: boolean;
   hitters: Performer[];
   pitchers: Performer[];
 }

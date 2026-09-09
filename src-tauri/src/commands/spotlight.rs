@@ -112,6 +112,10 @@ pub struct Performer {
 pub struct Spotlight {
     pub start: String,
     pub end: String,
+    /// True when the caller asked for "now" and the window had to fall back off today
+    /// because today has not been played yet. The UI says which day it is showing
+    /// rather than presenting last night's slate as this morning's.
+    pub resolved_back: bool,
     pub hitters: Vec<Performer>,
     pub pitchers: Vec<Performer>,
 }
@@ -125,14 +129,21 @@ pub async fn get_top_performers(
     season: Option<String>,
     limit: Option<usize>,
 ) -> Result<Spotlight> {
+    // With no date given, anchor on the last slate that was actually played rather than
+    // on today. Today is empty until the evening games are in, and a window over an
+    // empty day ranks nobody — see `commands::last_completed_slate`.
+    let today = today_mlb();
     let end = match date {
         Some(d) => {
             super::charts::validate_date(&d)?;
             d
         }
-        None => today_mlb(),
+        None => super::last_completed_slate(&state.client).await,
     };
-    let season = season_or_current(season);
+    let resolved_back = end != today;
+    // The season follows the window, not the wall clock: in January the last completed
+    // slate is the previous autumn's, and asking for this year's stats returns nothing.
+    let season = season.or_else(|| super::season_of_date(&end)).unwrap_or_else(|| season_or_current(None));
     let start = shift_days(&end, -(period.days() - 1))?;
     let limit = limit.unwrap_or(5).min(25);
 
@@ -159,7 +170,7 @@ pub async fn get_top_performers(
     hitters.truncate(limit);
     pitchers.truncate(limit);
 
-    Ok(Spotlight { start, end, hitters, pitchers })
+    Ok(Spotlight { start, end, resolved_back, hitters, pitchers })
 }
 
 /// The clips one player appears in, from one game.
@@ -252,7 +263,9 @@ pub fn pitcher_wins(stat: &serde_json::Map<String, serde_json::Value>) -> f64 {
     ((LEAGUE_RA9 - ra9) / 9.0) * ip / RUNS_PER_WIN
 }
 
-fn rank_hitters(
+/// Public so a dump harness can produce genuinely real spotlight output, the same way
+/// `plays::rank_slate` is.
+pub fn rank_hitters(
     rows: &[mlb::models::PlayerStatRow],
     war: &HashMap<i64, f64>,
     period: Period,
@@ -303,7 +316,7 @@ fn rank_hitters(
     out
 }
 
-fn rank_pitchers(
+pub fn rank_pitchers(
     rows: &[mlb::models::PlayerStatRow],
     war: &HashMap<i64, f64>,
     period: Period,

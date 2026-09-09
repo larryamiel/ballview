@@ -7,6 +7,12 @@
  *
  * The honest caveat is shown, not buried: MLB publishes WAR season-to-date only, so the
  * headline number is a wins estimate computed from the window's own line.
+ *
+ * The window is anchored on the last slate that was actually played, not on today. For
+ * most of the day today has no completed games in it — the US evening has not happened
+ * yet — and a day's leaderboard over an empty day ranked nobody, which is what "Player
+ * of the Day doesn't work" looked like. When the window has fallen back, the panel says
+ * so rather than presenting last night's winner as today's.
  */
 
 import { useState } from 'react';
@@ -49,6 +55,7 @@ export function SpotlightPanel() {
               {spotlight.data.start === spotlight.data.end
                 ? prettyDate(spotlight.data.end)
                 : `${prettyDate(spotlight.data.start)} – ${prettyDate(spotlight.data.end)}`}
+              {spotlight.data.resolvedBack && ' · the last completed slate'}
             </p>
           )}
         </div>
@@ -122,8 +129,8 @@ function Column({
       <section>
         <h3 className="box-head">{title}</h3>
         <EmptyState title="Nobody qualified">
-          Every player needs a minimum of work in the window, so a quiet slate can come back
-          empty.
+          Every player needs a minimum of work in the window — three plate appearances, or
+          three innings — so a very short slate can still come back empty.
         </EmptyState>
       </section>
     );
